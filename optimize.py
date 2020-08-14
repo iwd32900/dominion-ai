@@ -96,20 +96,26 @@ class EndBuy(Move):
     def __str__(self):
         return "end turn"
 
+def add_idx(*args):
+    ii = 0
+    for seq in args:
+        for el in seq:
+            el.idx = ii
+            ii += 1
+    return ii
+
 class FixedRankStrategy:
     def __init__(self):
         self.actions = [PlayCard(c) for c in ALL_CARDS if c.is_action] + [EndActions()]
         self.buys = [BuyCard(c) for c in ALL_CARDS] + [EndBuy()]
-        for action in self.actions:
-            action.weight = random.random()
-        for buy in self.buys:
-            buy.weight = random.random()
-        self.actions.sort(key=lambda x: x.weight)
-        self.buys.sort(key=lambda x: x.weight)
+        num_idx = add_idx(self.actions, self.buys)
+        self.weights = [random.random() for _ in range(num_idx)]
+        self.sorted_actions = sorted(self.actions, key=lambda x: self.weights[x.idx])
+        self.sorted_buys = sorted(self.buys, key=lambda x: self.weights[x.idx])
     def iter_actions(self, game, player):
-        yield from self.actions
+        yield from self.sorted_actions
     def iter_buys(self, game, player):
-        yield from self.buys
+        yield from self.sorted_buys
 
 class Player:
     def __init__(self, name, deck, strategy):
@@ -191,28 +197,6 @@ def print_stockpile(stockpile):
     for card, count in stockpile.items():
         print(f"  {count} {card}")
 
-def make_game_01():
-    num_players = 3
-    players = []
-    for ii in range(num_players):
-        player = Player(str(ii+1), STARTING_DECK, FixedRankStrategy())
-        print(f"Player {player.name}:")
-        print(f"  actions: {', '.join(str(x) for x in player.strategy.actions)}")
-        print(f"  buys:    {', '.join(str(x) for x in player.strategy.buys)}")
-        players.append(player)
-
-    game = Game(players, STARTING_STOCKPILE)
-
-    print_stockpile(game.stockpile)
-
-    game.run()
-
-    print(f"Deck:")
-    print_stockpile(game.stockpile)
-    for player in game.players:
-        print(f"Player {player.name}    pts = {player.calc_victory_points()}")
-        print_stockpile(Counter(player.all_cards()))
-
 def make_game_02():
     popsize = 12 * 32 # some multiple of 2, 3, and 4
     games_per_strategy = 20
@@ -233,8 +217,8 @@ def make_game_02():
 
     strategies.sort(key=lambda x: x.fitness, reverse=True)
     strategy = strategies[0]
-    print(f"  actions: {', '.join(str(x) for x in strategy.actions)}")
-    print(f"  buys:    {', '.join(str(x) for x in strategy.buys)}")
+    print(f"  actions: {', '.join(str(x) for x in strategy.sorted_actions)}")
+    print(f"  buys:    {', '.join(str(x) for x in strategy.sorted_buys)}")
 
 
 make_game_02()
