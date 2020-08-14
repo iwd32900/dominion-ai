@@ -1,6 +1,7 @@
 from collections import Counter
 import random
-random.seed(123456)
+
+# random.seed(123456)
 
 class Card:
     cost = 0
@@ -105,11 +106,15 @@ def add_idx(*args):
     return ii
 
 class FixedRankStrategy:
-    def __init__(self):
+    def __init__(self, weights=None):
         self.actions = [PlayCard(c) for c in ALL_CARDS if c.is_action] + [EndActions()]
         self.buys = [BuyCard(c) for c in ALL_CARDS] + [EndBuy()]
         num_idx = add_idx(self.actions, self.buys)
-        self.weights = [random.random() for _ in range(num_idx)]
+        if weights:
+            self.weights = list(weights)
+        else:
+            self.weights = [random.random() for _ in range(num_idx)]
+        assert len(self.weights) == num_idx
         self.sorted_actions = sorted(self.actions, key=lambda x: self.weights[x.idx])
         self.sorted_buys = sorted(self.buys, key=lambda x: self.weights[x.idx])
     def iter_actions(self, game, player):
@@ -197,12 +202,10 @@ def print_stockpile(stockpile):
     for card, count in stockpile.items():
         print(f"  {count} {card}")
 
-def make_game_02():
-    popsize = 12 * 32 # some multiple of 2, 3, and 4
-    games_per_strategy = 20
-    players_per_game = 3
+def run_tournament(strategies, players_per_game=3, games_per_strategy=50):
+    popsize = len(strategies)
+    assert popsize % players_per_game == 0, "Popsize must be evenly divisible by number of players"
 
-    strategies = [FixedRankStrategy() for _ in range(popsize)]
     for strategy in strategies:
         strategy.fitness = 0
 
@@ -216,9 +219,47 @@ def make_game_02():
                 player.strategy.fitness += player.calc_victory_points()
 
     strategies.sort(key=lambda x: x.fitness, reverse=True)
-    strategy = strategies[0]
-    print(f"  actions: {', '.join(str(x) for x in strategy.sorted_actions)}")
-    print(f"  buys:    {', '.join(str(x) for x in strategy.sorted_buys)}")
+
+def cross(w1, w2):
+    """
+    Given two vectors, return a new vector that inherits either w1[i] or w2[i] for all i.
+
+    Treating the whole vector as a single chromosome
+    allows some crosses to be mostly one parent and a little of the other, good for fine tuning.
+    But it creates linkage between adjacent elements, which is particularly problematic if the order is arbitrary.
+
+    Treating each element as an independently-assorting chromosome
+    fixes the linkage problems,
+    but means offspring are always close to 50/50 mixes of both parents, which may be disruptive.
+
+    This algorithm is non-biological, but allows various mixes of the parents without linkage.
+    """
+    threshold = random.random()
+    w3 = [e1 if random.random() < threshold else e2 for e1, e2 in zip(w1, w2)]
+    return w3
+
+def evolve(strategies):
+    popsize = len(strategies)
+    parents = strategies[:popsize//5]
+    newstrat = list(parents)
+    while len(newstrat) < popsize:
+        p1 = random.choice(parents)
+        p2 = random.choice(parents)
+        w = cross(p1.weights, p2.weights)
+        newstrat.append(FixedRankStrategy(w))
+    return newstrat
+
+def make_game_02():
+    popsize = 12 * 32 # some multiple of 2, 3, and 4
+    strategies = [FixedRankStrategy() for _ in range(popsize)]
+
+    for _ in range(10):
+        run_tournament(strategies)
+        strategy = strategies[0]
+        print(f"fitness: {strategy.fitness}")
+        print(f"  actions: {', '.join(str(x) for x in strategy.sorted_actions)}")
+        print(f"  buys:    {', '.join(str(x) for x in strategy.sorted_buys)}")
+        strategies = evolve(strategies)
 
 
 make_game_02()
