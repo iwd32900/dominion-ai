@@ -1,5 +1,6 @@
 from collections import Counter
 import random
+import time
 
 # random.seed(123456)
 
@@ -33,7 +34,10 @@ Estate   = Card("Estate",   cost=2, victory_points=1)
 Duchy    = Card("Duchy",    cost=5, victory_points=3)
 Province = Card("Province", cost=8, victory_points=6)
 
-ALL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
+Gardens = Card("Gardens", cost=4) # vic pts depends on final deck size
+
+MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
+ALL_CARDS = MINIMAL_CARDS + [Gardens]
 STARTING_STOCKPILE = {
     Copper: 61,
     Silver: 41,
@@ -41,6 +45,7 @@ STARTING_STOCKPILE = {
     Estate: 25,
     Duchy: 13,
     Province: 15,
+    Gardens: 13,
 }
 STARTING_DECK = [Copper]*7 + [Estate]*3
 
@@ -158,7 +163,11 @@ class Player:
         yield from self.played
         yield from self.discard
     def calc_victory_points(self):
-        return sum(c.victory_points for c in self.all_cards())
+        all_cards = list(self.all_cards())
+        base_pts = sum(c.victory_points for c in all_cards)
+        num_gardens = sum(1 for c in all_cards if c == Gardens)
+        garden_pts = num_gardens * (len(all_cards)//10)
+        return base_pts + garden_pts
 
 class Game:
     def __init__(self, players, stockpile):
@@ -238,6 +247,11 @@ def cross(w1, w2):
     w3 = [e1 if random.random() < threshold else e2 for e1, e2 in zip(w1, w2)]
     return w3
 
+def mutate(w, rate):
+    for ii in range(len(w)):
+        if random.random() < rate:
+            w[ii] = random.random()
+
 def evolve(strategies):
     popsize = len(strategies)
     parents = strategies[:popsize//5]
@@ -246,21 +260,22 @@ def evolve(strategies):
         p1 = random.choice(parents)
         p2 = random.choice(parents)
         w = cross(p1.weights, p2.weights)
+        mutate(w, 0.05)
         newstrat.append(FixedRankStrategy(w))
     return newstrat
 
-def make_game_02():
+def main():
     popsize = 12 * 32 # some multiple of 2, 3, and 4
     strategies = [FixedRankStrategy() for _ in range(popsize)]
 
-    for _ in range(10):
+    for cycle in range(100): # expect to Ctrl-C to exit early
+        start = time.time()
         run_tournament(strategies)
         strategy = strategies[0]
-        print(f"fitness: {strategy.fitness}")
+        print(f"round {cycle}    fitness {strategy.fitness}    {time.time() - start:.2f} sec")
         print(f"  actions: {', '.join(str(x) for x in strategy.sorted_actions)}")
         print(f"  buys:    {', '.join(str(x) for x in strategy.sorted_buys)}")
         strategies = evolve(strategies)
 
-
-make_game_02()
+main()
 
