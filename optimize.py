@@ -36,8 +36,20 @@ Province = Card("Province", cost=8, victory_points=6)
 
 Gardens = Card("Gardens", cost=4) # vic pts depends on final deck size
 
+Festival = Card("Festival", cost=5, actions_when_played=2, buys_when_played=1, money_when_played=2, is_action=True)
+Laboratory = Card("Laboratory", cost=5, actions_when_played=1, cards_when_played=2, is_action=True)
+Market = Card("Market", cost=5, actions_when_played=1, buys_when_played=1, cards_when_played=1, money_when_played=1, is_action=True)
+Smithy = Card("Smithy", cost=4, cards_when_played=3, is_action=True)
+Village = Card("Village", cost=3, actions_when_played=2, cards_when_played=1, is_action=True)
+Woodcutter = Card("Woodcutter", cost=5, buys_when_played=1, money_when_played=2, is_action=True)
+
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
-ALL_CARDS = MINIMAL_CARDS + [Gardens]
+MULTIPLIER_CARDS = [Festival, Laboratory, Market, Smithy, Village, Woodcutter]
+#ALL_CARDS = MINIMAL_CARDS + [Gardens]
+#ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS
+#ALL_CARDS = MINIMAL_CARDS + [Smithy, Market, Festival]
+ALL_CARDS = MINIMAL_CARDS + [Festival, Laboratory, Market, Village, Woodcutter]
+ALL_CARDS = MINIMAL_CARDS + [Market, Woodcutter]
 STARTING_STOCKPILE = {
     Copper: 61,
     Silver: 41,
@@ -46,6 +58,12 @@ STARTING_STOCKPILE = {
     Duchy: 13,
     Province: 15,
     Gardens: 13,
+    Festival: 11,
+    Laboratory: 11,
+    Market: 11,
+    Smithy: 11,
+    Village: 11,
+    Woodcutter: 11,
 }
 STARTING_DECK = [Copper]*7 + [Estate]*3
 
@@ -81,6 +99,11 @@ class PlayCard(Move):
             and player.actions >= 1
             and self.card.is_action
         )
+    def do_move(self, game, player):
+        # This order is important: while playing, a card is neither part of the hand, nor the discards
+        player.hand.remove(self.card)
+        self.card.play(game, player)
+        player.played.append(self.card)
     def __str__(self):
         return "play "+str(self.card)
 
@@ -151,6 +174,9 @@ class Player:
             if len(self.deck) == 0:
                 self.deck, self.discard = self.discard, self.deck
                 random.shuffle(self.deck)
+                if len(self.deck) == 0:
+                    # TODO: Should cards played this turn be eligible to shuffle back in?
+                    break # all cards are in hand already!
             self.hand.append(self.deck.pop())
     def calc_money(self):
         self.money = (
