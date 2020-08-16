@@ -25,6 +25,17 @@ class Card:
     def __str__(self):
         return self.name
 
+class WitchCard(Card):
+    def __init__(self):
+        super().__init__("Witch", cost=5, is_action=True, cards_when_played=2)
+    def play(self, game, player):
+        super().play(game, player)
+        for other in game.players:
+            if other == player or game.stockpile[Curse] < 1:
+                continue
+            other.discard.append(Curse)
+            game.stockpile[Curse] -= 1
+
 # Singleton objects
 Copper = Card("Copper", cost=0, money_in_hand=1)
 Silver = Card("Silver", cost=3, money_in_hand=2)
@@ -33,8 +44,8 @@ Gold   = Card("Gold",   cost=6, money_in_hand=3)
 Estate   = Card("Estate",   cost=2, victory_points=1)
 Duchy    = Card("Duchy",    cost=5, victory_points=3)
 Province = Card("Province", cost=8, victory_points=6)
-
-Gardens = Card("Gardens", cost=4) # vic pts depends on final deck size
+Curse    = Card("Curse",    cost=0, victory_points = -1)
+Gardens  = Card("Gardens", cost=4) # vic pts depends on final deck size
 
 Festival = Card("Festival", cost=5, actions_when_played=2, buys_when_played=1, money_when_played=2, is_action=True)
 Laboratory = Card("Laboratory", cost=5, actions_when_played=1, cards_when_played=2, is_action=True)
@@ -43,13 +54,16 @@ Smithy = Card("Smithy", cost=4, cards_when_played=3, is_action=True)
 Village = Card("Village", cost=3, actions_when_played=2, cards_when_played=1, is_action=True)
 Woodcutter = Card("Woodcutter", cost=5, buys_when_played=1, money_when_played=2, is_action=True)
 
+Witch = WitchCard()
+
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Smithy, Village, Woodcutter]
-#ALL_CARDS = MINIMAL_CARDS + [Gardens]
-#ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS
-#ALL_CARDS = MINIMAL_CARDS + [Smithy, Market, Festival]
-ALL_CARDS = MINIMAL_CARDS + [Festival, Laboratory, Market, Village, Woodcutter]
-ALL_CARDS = MINIMAL_CARDS + [Market, Woodcutter]
+# ALL_CARDS = MINIMAL_CARDS
+# ALL_CARDS = MINIMAL_CARDS + [Gardens]
+# ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS
+ALL_CARDS = MINIMAL_CARDS + [Festival, Laboratory, Market, Village, Woodcutter] # no Smithy
+# ALL_CARDS = MINIMAL_CARDS + [Witch]
+
 STARTING_STOCKPILE = {
     Copper: 61,
     Silver: 41,
@@ -57,6 +71,7 @@ STARTING_STOCKPILE = {
     Estate: 25,
     Duchy: 13,
     Province: 15,
+    Curse: 31,
     Gardens: 13,
     Festival: 11,
     Laboratory: 11,
@@ -64,6 +79,7 @@ STARTING_STOCKPILE = {
     Smithy: 11,
     Village: 11,
     Woodcutter: 11,
+    Witch: 11,
 }
 STARTING_DECK = [Copper]*7 + [Estate]*3
 
@@ -88,7 +104,7 @@ class BuyCard(Move):
         player.discard.append(self.card)
         game.stockpile[self.card] -= 1
     def __str__(self):
-        return "buy "+str(self.card)
+        return ""+str(self.card)
 
 class PlayCard(Move):
     def __init__(self, card):
@@ -105,7 +121,7 @@ class PlayCard(Move):
         self.card.play(game, player)
         player.played.append(self.card)
     def __str__(self):
-        return "play "+str(self.card)
+        return ""+str(self.card)
 
 class EndActions(Move):
     def can_move(self, game, player):
@@ -113,7 +129,7 @@ class EndActions(Move):
     def do_move(self, game, player):
         player.actions = 0
     def __str__(self):
-        return "actions -> buying"
+        return "END"
 
 class EndBuy(Move):
     def can_move(self, game, player):
@@ -123,7 +139,7 @@ class EndBuy(Move):
         player.buys = 0
         player.draw_hand()
     def __str__(self):
-        return "end turn"
+        return "END"
 
 def add_idx(*args):
     ii = 0
@@ -135,6 +151,7 @@ def add_idx(*args):
 
 class FixedRankStrategy:
     def __init__(self, weights=None):
+        self.counts = Counter() # {Card: int}
         self.actions = [PlayCard(c) for c in ALL_CARDS if c.is_action] + [EndActions()]
         self.buys = [BuyCard(c) for c in ALL_CARDS] + [EndBuy()]
         num_idx = add_idx(self.actions, self.buys)
@@ -223,6 +240,7 @@ class Game:
                         if action.can_move(game, player):
                             # print(f"    {action}")
                             action.do_move(game, player)
+                            player.strategy.counts[action] += 1
                             break
                 player.calc_money()
                 while player.buys > 0 and player.money > 0:
@@ -230,6 +248,7 @@ class Game:
                         if buy.can_move(game, player):
                             # print(f"    {buy}")
                             buy.do_move(game, player)
+                            player.strategy.counts[buy] += 1
                             break
                 player.draw_hand()
 
@@ -243,6 +262,7 @@ def run_tournament(strategies, players_per_game=3, games_per_strategy=50):
 
     for strategy in strategies:
         strategy.fitness = 0
+        strategy.counts.clear()
 
     for _ in range(games_per_strategy):
         random.shuffle(strategies)
@@ -290,17 +310,22 @@ def evolve(strategies):
         newstrat.append(FixedRankStrategy(w))
     return newstrat
 
+def fmt_moves(strategy, moves):
+    return '   '.join(f"{strategy.counts[m]} {m}" for m in moves)
+
 def main():
+    players = 2
     popsize = 12 * 32 # some multiple of 2, 3, and 4
     strategies = [FixedRankStrategy() for _ in range(popsize)]
 
     for cycle in range(100): # expect to Ctrl-C to exit early
         start = time.time()
-        run_tournament(strategies)
+        run_tournament(strategies, players)
         strategy = strategies[0]
-        print(f"round {cycle}    fitness {strategy.fitness}    {time.time() - start:.2f} sec")
-        print(f"  actions: {', '.join(str(x) for x in strategy.sorted_actions)}")
-        print(f"  buys:    {', '.join(str(x) for x in strategy.sorted_buys)}")
+        print(f"round {cycle}    fitness {strategy.fitness}    {players} players    {time.time() - start:.2f} sec")
+        print(f"  actions: {fmt_moves(strategy, strategy.sorted_actions)}")
+        print(f"  buys:    {fmt_moves(strategy, strategy.sorted_buys)}")
+        print("")
         strategies = evolve(strategies)
 
 main()
