@@ -98,6 +98,17 @@ Interestingly, it's apparently most valuable in the 2-player game though.
 - buy Silver
 - buy Copper
 
+## Moat
+
+- buy Moat (3 or 4 players)
+- buy Province
+- buy Moat (2 players)
+- buy Gold
+- buy Witch (3 or 4 players only)
+- buy Duchy (2 players only, in practice)
+- buy Silver
+- buy Estate/Copper
+
 ## Deterministic
 
 Adventurer, Bureaucrat, Council Room, Mine*, Moat

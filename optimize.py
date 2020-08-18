@@ -7,6 +7,7 @@ import time
 class Card:
     cost = 0
     is_action = False
+    is_victory = False
     victory_points = 0
     money_in_hand = 0
     money_when_played = 0
@@ -28,24 +29,75 @@ class Card:
 class WitchCard(Card):
     def __init__(self):
         super().__init__("Witch", cost=5, is_action=True, cards_when_played=2)
+    def play(self, game, attacker):
+        super().play(game, attacker)
+        for defender in game.players:
+            if defender == attacker or game.stockpile[Curse] < 1 or (Moat in defender.hand):
+                continue
+            defender.discard.append(Curse)
+            game.stockpile[Curse] -= 1
+
+class AdventurerCard(Card):
+    def __init__(self):
+        super().__init__("Adventurer", cost=6, is_action=True)
     def play(self, game, player):
         super().play(game, player)
-        for other in game.players:
-            if other == player or game.stockpile[Curse] < 1:
+        raise NotImplementedError()
+
+class BureaucratCard(Card):
+    def __init__(self):
+        super().__init__("Bureaucrat", cost=4, is_action=True)
+    def play(self, game, attacker):
+        super().play(game, attacker)
+        if game.stockpile[Silver] >= 1:
+            attacker.deck.append(Silver)
+            game.stockpile[Silver] -= 1
+        for defender in game.players:
+            if defender == attacker or (Moat in defender.hand):
                 continue
-            other.discard.append(Curse)
-            game.stockpile[Curse] -= 1
+            for ii, card in enumerate(defender.hand):
+                if card.is_victory:
+                    defender.deck.append(defender.hand.pop(ii))
+                    break
+
+class CouncilRoomCard(Card):
+    def __init__(self):
+        super().__init__("Council_Room", cost=5, is_action=True, buys_when_played=1, cards_when_played=4)
+    def play(self, game, attacker):
+        super().play(game, attacker)
+        for defender in game.players:
+            if defender == attacker: # not really an attack
+                continue
+            defender.draw_cards(1)
+
+class MineCard(Card):
+    def __init__(self):
+        super().__init__("Mine", cost=5, is_action=True)
+    def play(self, game, player):
+        super().play(game, player)
+        if Silver in player.hand and game.stockpile[Gold] >= 1:
+            player.hand.remove(Silver) # trashed - lost from game
+            player.hand.append(Gold)
+            game.stockpile[Gold] -= 1
+        elif Copper in player.hand and game.stockpile[Silver] >= 1:
+            player.hand.remove(Copper) # trashed - lost from game
+            player.hand.append(Silver)
+            game.stockpile[Silver] -= 1
+
+class MoatCard(Card):
+    def __init__(self):
+        super().__init__("Moat", cost=2, is_action=True, cards_when_played=2)
 
 # Singleton objects
 Copper = Card("Copper", cost=0, money_in_hand=1)
 Silver = Card("Silver", cost=3, money_in_hand=2)
 Gold   = Card("Gold",   cost=6, money_in_hand=3)
 
-Estate   = Card("Estate",   cost=2, victory_points=1)
-Duchy    = Card("Duchy",    cost=5, victory_points=3)
-Province = Card("Province", cost=8, victory_points=6)
+Estate   = Card("Estate",   cost=2, victory_points=1, is_victory=True)
+Duchy    = Card("Duchy",    cost=5, victory_points=3, is_victory=True)
+Province = Card("Province", cost=8, victory_points=6, is_victory=True)
 Curse    = Card("Curse",    cost=0, victory_points = -1)
-Gardens  = Card("Gardens", cost=4) # vic pts depends on final deck size
+Gardens  = Card("Gardens", cost=4, is_victory=True) # vic pts depends on final deck size
 
 Festival = Card("Festival", cost=5, actions_when_played=2, buys_when_played=1, money_when_played=2, is_action=True)
 Laboratory = Card("Laboratory", cost=5, actions_when_played=1, cards_when_played=2, is_action=True)
@@ -55,31 +107,40 @@ Village = Card("Village", cost=3, actions_when_played=2, cards_when_played=1, is
 Woodcutter = Card("Woodcutter", cost=5, buys_when_played=1, money_when_played=2, is_action=True)
 
 Witch = WitchCard()
+Bureaucrat = BureaucratCard()
+CouncilRoom = CouncilRoomCard()
+Mine = MineCard()
+Moat = MoatCard()
 
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Smithy, Village, Woodcutter]
 # ALL_CARDS = MINIMAL_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Gardens]
 # ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS
-ALL_CARDS = MINIMAL_CARDS + [Festival, Laboratory, Market, Village, Woodcutter] # no Smithy
+# ALL_CARDS = MINIMAL_CARDS + [Festival, Laboratory, Market, Village, Woodcutter] # no Smithy
 # ALL_CARDS = MINIMAL_CARDS + [Witch]
+ALL_CARDS = MINIMAL_CARDS + [Witch, Moat]
 
 STARTING_STOCKPILE = {
-    Copper: 61,
-    Silver: 41,
-    Gold: 31,
-    Estate: 25,
-    Duchy: 13,
-    Province: 15,
-    Curse: 31,
-    Gardens: 13,
-    Festival: 11,
-    Laboratory: 11,
-    Market: 11,
-    Smithy: 11,
-    Village: 11,
-    Woodcutter: 11,
-    Witch: 11,
+    Copper: 60,
+    Silver: 40,
+    Gold: 30,
+    Estate: 0,
+    Duchy: 0,
+    Province: 0,
+    Curse: 0,
+    Gardens: 0,
+    Festival: 10,
+    Laboratory: 10,
+    Market: 10,
+    Smithy: 10,
+    Village: 10,
+    Woodcutter: 10,
+    Witch: 10,
+    Bureaucrat: 10,
+    CouncilRoom: 10,
+    Mine: 10,
+    Moat: 10,
 }
 STARTING_DECK = [Copper]*7 + [Estate]*3
 
@@ -252,6 +313,24 @@ class Game:
                             break
                 player.draw_hand()
 
+def get_starting_stockpile(num_players):
+    sp = dict(STARTING_STOCKPILE)
+    if num_players == 2:
+        sp[Estate] = 8 + 6 # each player starts with 3
+        sp[Duchy] = sp[Province] = sp[Gardens] = 8
+        sp[Curse] = 10
+    elif num_players == 3:
+        sp[Estate] = 12 + 9 # each player starts with 3
+        sp[Duchy] = sp[Province] = sp[Gardens] = 12
+        sp[Curse] = 20
+    elif num_players == 4:
+        sp[Estate] = 12 + 12 # each player starts with 3
+        sp[Duchy] = sp[Province] = sp[Gardens] = 12
+        sp[Curse] = 30
+    else:
+        assert False
+    return sp
+
 def print_stockpile(stockpile):
     for card, count in stockpile.items():
         print(f"  {count} {card}")
@@ -268,7 +347,7 @@ def run_tournament(strategies, players_per_game=3, games_per_strategy=50):
         random.shuffle(strategies)
         for ii in range(0, popsize, players_per_game):
             players = [Player(str(jj+1), STARTING_DECK, strategies[ii+jj]) for jj in range(players_per_game)]
-            game = Game(players, STARTING_STOCKPILE)
+            game = Game(players, get_starting_stockpile(players_per_game))
             game.run()
             for player in players:
                 player.strategy.fitness += player.calc_victory_points()
