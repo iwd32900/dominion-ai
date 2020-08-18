@@ -96,6 +96,7 @@ Gold   = Card("Gold",   cost=6, money_in_hand=3)
 Estate   = Card("Estate",   cost=2, victory_points=1, is_victory=True)
 Duchy    = Card("Duchy",    cost=5, victory_points=3, is_victory=True)
 Province = Card("Province", cost=8, victory_points=6, is_victory=True)
+
 Curse    = Card("Curse",    cost=0, victory_points = -1)
 Gardens  = Card("Gardens", cost=4, is_victory=True) # vic pts depends on final deck size
 
@@ -114,12 +115,14 @@ Moat = MoatCard()
 
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Smithy, Village, Woodcutter]
+DETERMINISTIC_CARDS = [Bureaucrat, CouncilRoom, Mine, Moat]
 # ALL_CARDS = MINIMAL_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Gardens]
 # ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Festival, Laboratory, Market, Village, Woodcutter] # no Smithy
 # ALL_CARDS = MINIMAL_CARDS + [Witch]
 ALL_CARDS = MINIMAL_CARDS + [Witch, Moat]
+ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + [Gardens, Witch]
 
 STARTING_STOCKPILE = {
     Copper: 60,
@@ -340,6 +343,7 @@ def run_tournament(strategies, players_per_game=3, games_per_strategy=50):
     assert popsize % players_per_game == 0, "Popsize must be evenly divisible by number of players"
 
     for strategy in strategies:
+        strategy.wins = 0
         strategy.fitness = 0
         strategy.counts.clear()
 
@@ -349,10 +353,14 @@ def run_tournament(strategies, players_per_game=3, games_per_strategy=50):
             players = [Player(str(jj+1), STARTING_DECK, strategies[ii+jj]) for jj in range(players_per_game)]
             game = Game(players, get_starting_stockpile(players_per_game))
             game.run()
+            max_vp = max(player.calc_victory_points() for player in players)
             for player in players:
-                player.strategy.fitness += player.calc_victory_points()
+                vp = player.calc_victory_points()
+                player.strategy.fitness += vp
+                if vp == max_vp: player.strategy.wins += 1 # get credit on tying for first
 
-    strategies.sort(key=lambda x: x.fitness, reverse=True)
+
+    strategies.sort(key=lambda x: (x.wins, x.fitness), reverse=True)
 
 def cross(w1, w2):
     """
@@ -390,20 +398,20 @@ def evolve(strategies):
     return newstrat
 
 def fmt_moves(strategy, moves):
-    return '   '.join(f"{strategy.counts[m]} {m}" for m in moves)
+    return '   '.join(f"{strategy.counts[m]} {m}" for m in moves if strategy.counts[m] > 0)
 
 def main():
-    players = 2
+    players = 3
     popsize = 12 * 32 # some multiple of 2, 3, and 4
     strategies = [FixedRankStrategy() for _ in range(popsize)]
 
     for cycle in range(100): # expect to Ctrl-C to exit early
         start = time.time()
         run_tournament(strategies, players)
-        strategy = strategies[0]
-        print(f"round {cycle}    fitness {strategy.fitness}    {players} players    {time.time() - start:.2f} sec")
-        print(f"  actions: {fmt_moves(strategy, strategy.sorted_actions)}")
-        print(f"  buys:    {fmt_moves(strategy, strategy.sorted_buys)}")
+        for strategy in strategies[:3]:
+            print(f"round {cycle}    wins {strategy.wins}    fitness {strategy.fitness}    {players} players    {time.time() - start:.2f} sec")
+            print(f"  actions: {fmt_moves(strategy, strategy.sorted_actions)}")
+            print(f"  buys:    {fmt_moves(strategy, strategy.sorted_buys)}")
         print("")
         strategies = evolve(strategies)
 

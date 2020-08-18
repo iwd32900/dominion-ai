@@ -109,6 +109,23 @@ Interestingly, it's apparently most valuable in the 2-player game though.
 - buy Silver
 - buy Estate/Copper
 
+## Starting cards
+
+At this point, I actually read the rules more carefully and got the number of starting cards correct...
+
+## All deterministic cards
+
+This is all the cards above plus ~~Adventurer~~, Bureaucrat, Council Room, and Mine.
+Technically, Mine is not deterministic, but at this point I feel safe
+with a heuristic that chooses to upgrade Silver to Gold in preference to Copper to Silver.
+
+2 player: Province, Gold, Witch, Moat, Smithy/Gardens/Estate/Copper
+3 player:
+- Moat, Province, Gold, Witch, Smith, Silver, Estate
+
+4 player:
+- Province, Moat/Gold, Witch, Smith, Silver, Estate, Copper
+
 ## Deterministic
 
 Adventurer, Bureaucrat, Council Room, Mine*, Moat
