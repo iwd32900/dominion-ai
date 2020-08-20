@@ -116,13 +116,13 @@ Moat = MoatCard()
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Smithy, Village, Woodcutter]
 DETERMINISTIC_CARDS = [Bureaucrat, CouncilRoom, Mine, Moat]
-# ALL_CARDS = MINIMAL_CARDS
+ALL_CARDS = MINIMAL_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Gardens]
 # ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Festival, Laboratory, Market, Village, Woodcutter] # no Smithy
 # ALL_CARDS = MINIMAL_CARDS + [Witch]
-ALL_CARDS = MINIMAL_CARDS + [Witch, Moat]
-ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + [Gardens, Witch]
+# ALL_CARDS = MINIMAL_CARDS + [Witch, Moat]
+# ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + [Gardens, Witch]
 
 STARTING_STOCKPILE = {
     Copper: 60,
@@ -205,24 +205,20 @@ class EndBuy(Move):
     def __str__(self):
         return "END"
 
-def add_idx(*args):
-    ii = 0
-    for seq in args:
-        for el in seq:
-            el.idx = ii
-            ii += 1
-    return ii
-
 class FixedRankStrategy:
     def __init__(self, weights=None):
         self.counts = Counter() # {Card: int}
         self.actions = [PlayCard(c) for c in ALL_CARDS if c.is_action] + [EndActions()]
         self.buys = [BuyCard(c) for c in ALL_CARDS] + [EndBuy()]
-        num_idx = add_idx(self.actions, self.buys)
+        self.weight_dist = []
+        for move in (self.actions + self.buys):
+            move.idx = len(self.weight_dist)
+            self.weight_dist.append(random.random)
+        num_idx = len(self.weight_dist)
         if weights:
             self.weights = list(weights)
         else:
-            self.weights = [random.random() for _ in range(num_idx)]
+            self.weights = [self.weight_dist[ii]() for ii in range(num_idx)]
         assert len(self.weights) == num_idx
         self.sorted_actions = sorted(self.actions, key=lambda x: self.weights[x.idx])
         self.sorted_buys = sorted(self.buys, key=lambda x: self.weights[x.idx])
@@ -230,6 +226,60 @@ class FixedRankStrategy:
         yield from self.sorted_actions
     def iter_buys(self, game, player):
         yield from self.sorted_buys
+    def fmt_actions(self):
+        return '   '.join(f"{self.counts[m]} {m}" for m in self.sorted_actions if self.counts[m] > 0)
+    def fmt_buys(self):
+        return '   '.join(f"{self.counts[m]} {m}" for m in self.sorted_buys if self.counts[m] > 0)
+
+class LinearRankStrategy:
+    def __init__(self, weights=None):
+        self.counts = Counter() # {Card: int}
+        self.counts_by_turn = Counter() # {(turn, Card): int}
+        self.game_lengths = Counter() # {int: int}
+        self.actions = [PlayCard(c) for c in ALL_CARDS if c.is_action] + [EndActions()]
+        self.buys = [BuyCard(c) for c in ALL_CARDS] + [EndBuy()]
+        self.weight_dist = []
+        linear_coef = lambda: random.normalvariate(0, 0.05)
+        for move in (self.actions + self.buys):
+            move.idx = len(self.weight_dist)
+            self.weight_dist.append(random.random)
+            self.weight_dist.append(linear_coef)
+        num_idx = len(self.weight_dist)
+        if weights:
+            self.weights = list(weights)
+        else:
+            self.weights = [self.weight_dist[ii]() for ii in range(num_idx)]
+        assert len(self.weights) == num_idx
+        self.reset()
+    def reset(self):
+        # Call once per tournament to reset statistics
+        self.wins = 0
+        self.fitness = 0
+        self.counts.clear()
+        self.counts_by_turn.clear()
+        self.game_lengths.clear()
+    def iter_actions(self, game, player):
+        # For now, don't include linear term for actions
+        key = lambda x: self.weights[x.idx] #+ game.turn*self.weights[x.idx+1]
+        yield from sorted(self.actions, key=key)
+    def iter_buys(self, game, player):
+        key = lambda x: self.weights[x.idx] + game.turn*self.weights[x.idx+1]
+        yield from sorted(self.buys, key=key)
+    def fmt_actions(self):
+        key = lambda x: self.weights[x.idx] #+ game.turn*self.weights[x.idx+1]
+        sorted_actions = sorted(self.actions, key=key)
+        return '   '.join(f"{self.counts[m]} {m} ({self.weights[m.idx+1]:.3f})" for m in sorted_actions if self.counts[m] > 0)
+    def fmt_buys(self):
+        key = lambda x: self.weights[x.idx] + game_turn*self.weights[x.idx+1]
+        base_line = ''
+        lines = [base_line]
+        for game_turn in range(40):
+            sorted_buys = sorted(self.buys, key=key)
+            line = '   '.join(f"{self.counts[m]} {m} ({self.weights[m.idx+1]:.3f})" for m in sorted_buys if self.counts[m] > 0)
+            if line != base_line:
+                base_line = line
+                lines.append(f'    {game_turn+1:2d}:   '+line)
+        return '\n'.join(lines)
 
 class Player:
     def __init__(self, name, deck, strategy):
@@ -278,6 +328,7 @@ class Player:
 
 class Game:
     def __init__(self, players, stockpile):
+        self.turn = 0
         self.players = list(players)
         self.stockpile = dict(stockpile)
         for player in players:
@@ -292,8 +343,9 @@ class Game:
         )
     def run(self):
         game = self
-        for game_round in range(100):
-            # print(f"Round {game_round}")
+        for turn in range(100):
+            game.turn = turn # counts from 0 to make LinearRankStrategy work better
+            # print(f"Round {game.turn}")
             for player in game.players:
                 if game.is_over():
                     return
@@ -305,6 +357,7 @@ class Game:
                             # print(f"    {action}")
                             action.do_move(game, player)
                             player.strategy.counts[action] += 1
+                            player.strategy.counts_by_turn[turn, action] += 1
                             break
                 player.calc_money()
                 while player.buys > 0 and player.money > 0:
@@ -313,6 +366,7 @@ class Game:
                             # print(f"    {buy}")
                             buy.do_move(game, player)
                             player.strategy.counts[buy] += 1
+                            player.strategy.counts_by_turn[turn, buy] += 1
                             break
                 player.draw_hand()
 
@@ -343,9 +397,7 @@ def run_tournament(strategies, players_per_game=3, games_per_strategy=50):
     assert popsize % players_per_game == 0, "Popsize must be evenly divisible by number of players"
 
     for strategy in strategies:
-        strategy.wins = 0
-        strategy.fitness = 0
-        strategy.counts.clear()
+        strategy.reset()
 
     for _ in range(games_per_strategy):
         random.shuffle(strategies)
@@ -358,6 +410,7 @@ def run_tournament(strategies, players_per_game=3, games_per_strategy=50):
                 vp = player.calc_victory_points()
                 player.strategy.fitness += vp
                 if vp == max_vp: player.strategy.wins += 1 # get credit on tying for first
+                player.strategy.game_lengths[game.turn+1] += 1
 
 
     strategies.sort(key=lambda x: (x.wins, x.fitness), reverse=True)
@@ -380,10 +433,10 @@ def cross(w1, w2):
     w3 = [e1 if random.random() < threshold else e2 for e1, e2 in zip(w1, w2)]
     return w3
 
-def mutate(w, rate):
+def mutate(w, weight_dist, rate):
     for ii in range(len(w)):
         if random.random() < rate:
-            w[ii] = random.random()
+            w[ii] = weight_dist[ii]()
 
 def evolve(strategies):
     popsize = len(strategies)
@@ -392,26 +445,25 @@ def evolve(strategies):
     while len(newstrat) < popsize:
         p1 = random.choice(parents)
         p2 = random.choice(parents)
+        assert p1.__class__ == p2.__class__
         w = cross(p1.weights, p2.weights)
-        mutate(w, 0.05)
-        newstrat.append(FixedRankStrategy(w))
+        mutate(w, p1.weight_dist, 0.05)
+        newstrat.append(p1.__class__(w))
     return newstrat
 
-def fmt_moves(strategy, moves):
-    return '   '.join(f"{strategy.counts[m]} {m}" for m in moves if strategy.counts[m] > 0)
-
 def main():
-    players = 3
+    players = 2
     popsize = 12 * 32 # some multiple of 2, 3, and 4
-    strategies = [FixedRankStrategy() for _ in range(popsize)]
+    # strategies = [FixedRankStrategy() for _ in range(popsize)]
+    strategies = [LinearRankStrategy() for _ in range(popsize)]
 
     for cycle in range(100): # expect to Ctrl-C to exit early
         start = time.time()
         run_tournament(strategies, players)
         for strategy in strategies[:3]:
-            print(f"round {cycle}    wins {strategy.wins}    fitness {strategy.fitness}    {players} players    {time.time() - start:.2f} sec")
-            print(f"  actions: {fmt_moves(strategy, strategy.sorted_actions)}")
-            print(f"  buys:    {fmt_moves(strategy, strategy.sorted_buys)}")
+            print(f"round {cycle}    wins {strategy.wins}    fitness {strategy.fitness}    game len {','.join(str(k) for k,v in strategy.game_lengths.most_common(3))}    {players} players    {time.time() - start:.2f} sec")
+            print(f"  actions: {strategy.fmt_actions()}")
+            print(f"  buys:    {strategy.fmt_buys()}")
         print("")
         strategies = evolve(strategies)
 

@@ -1,3 +1,11 @@
+## The literature
+[Dominion Strategy](https://dominionstrategy.com/)
+[Provincial, a Dominion AI](https://graphics.stanford.edu/~mdfisher/DominionAI.html)
+[Deep RL for Dominion](http://cs230.stanford.edu/projects_fall_2019/reports/26260348.pdf)
+[Dominion genetic algorithm](https://github.com/octachrome/dominion)
+
+[Spinning Up in Deep RL](https://spinningup.openai.com/en/latest/)
+
 ## The minimal game
 
 In the minimal game with only coins and victory points
@@ -47,6 +55,11 @@ With PyPy and my current settings, a typical generation is a bit over 2 seconds.
 With CPython3.6, a typical generation is about 11 seconds.
 This is about a 5x speedup, which is about as good a result as people ever get from PyPy -- excellent.
 First generations are always slower because the strategies are inefficient and the games are long.
+
+```
+pypy3 -m vmprof -o prof.log optimize.py
+/usr/local/share/pypy3/vmprofshow prof.log
+```
 
 ## The multipliers:  Festival, Laboratory, Market, Smithy, Village, Woodcutter
 
@@ -121,7 +134,8 @@ with a heuristic that chooses to upgrade Silver to Gold in preference to Copper 
 
 2 player: Province, Gold, Witch, Moat, Smithy/Gardens/Estate/Copper
 3 player:
-- Moat, Province, Gold, Witch, Smith, Silver, Estate
+- Moat, Province, Gold, Witch, Smithy, Silver, Estate
+- Province, Smithy, Mine, Moat (intermediate, evolves to above)
 
 4 player:
 - Province, Moat/Gold, Witch, Smith, Silver, Estate, Copper
