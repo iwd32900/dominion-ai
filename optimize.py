@@ -1,4 +1,5 @@
-from collections import Counter
+from collections import Counter, defaultdict
+import itertools
 import random
 import time
 
@@ -116,9 +117,9 @@ Moat = MoatCard()
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Smithy, Village, Woodcutter]
 DETERMINISTIC_CARDS = [Bureaucrat, CouncilRoom, Mine, Moat]
-ALL_CARDS = MINIMAL_CARDS
+# ALL_CARDS = MINIMAL_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Gardens]
-# ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS
+ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Festival, Laboratory, Market, Village, Woodcutter] # no Smithy
 # ALL_CARDS = MINIMAL_CARDS + [Witch]
 # ALL_CARDS = MINIMAL_CARDS + [Witch, Moat]
@@ -270,15 +271,28 @@ class LinearRankStrategy:
         sorted_actions = sorted(self.actions, key=key)
         return '   '.join(f"{self.counts[m]} {m} ({self.weights[m.idx+1]:.3f})" for m in sorted_actions if self.counts[m] > 0)
     def fmt_buys(self):
+        # Refomat into more useful but probably slower form
+        cbt = defaultdict(Counter)
+        for (turn,card), count in self.counts_by_turn.items():
+            cbt[turn][card] = count
+
+        used_buys = [m for m in self.buys if self.counts[m] > 0]
+        sorted_buys = []
         key = lambda x: self.weights[x.idx] + game_turn*self.weights[x.idx+1]
-        base_line = ''
-        lines = [base_line]
         for game_turn in range(40):
-            sorted_buys = sorted(self.buys, key=key)
-            line = '   '.join(f"{self.counts[m]} {m} ({self.weights[m.idx+1]:.3f})" for m in sorted_buys if self.counts[m] > 0)
-            if line != base_line:
-                base_line = line
-                lines.append(f'    {game_turn+1:2d}:   '+line)
+            sorted_buys.append(sorted(used_buys, key=key))
+
+        lines = ['']
+        for k, g in itertools.groupby(range(40), key=lambda x: sorted_buys[x]):
+            g = list(g)
+            cnts = Counter()
+            for game_turn in g:
+                cnts += cbt[game_turn]
+            line = '   '.join(f"{cnts[m]} {m} ({self.weights[m.idx+1]:.3f})" for m in k if cnts[m] > 0)
+            if sum(cnts.values()) > 0:
+                # avoid blank lines for sequences never played
+                lines.append(f'    {min(g)+1:2d}:   '+line)
+
         return '\n'.join(lines)
 
 class Player:
@@ -452,7 +466,7 @@ def evolve(strategies):
     return newstrat
 
 def main():
-    players = 2
+    players = 3
     popsize = 12 * 32 # some multiple of 2, 3, and 4
     # strategies = [FixedRankStrategy() for _ in range(popsize)]
     strategies = [LinearRankStrategy() for _ in range(popsize)]
