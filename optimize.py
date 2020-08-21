@@ -119,11 +119,11 @@ MULTIPLIER_CARDS = [Festival, Laboratory, Market, Smithy, Village, Woodcutter]
 DETERMINISTIC_CARDS = [Bureaucrat, CouncilRoom, Mine, Moat]
 # ALL_CARDS = MINIMAL_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Gardens]
-ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS
+# ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Festival, Laboratory, Market, Village, Woodcutter] # no Smithy
 # ALL_CARDS = MINIMAL_CARDS + [Witch]
 # ALL_CARDS = MINIMAL_CARDS + [Witch, Moat]
-# ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + [Gardens, Witch]
+ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + [Gardens, Witch]
 
 STARTING_STOCKPILE = {
     Copper: 60,
@@ -178,8 +178,8 @@ class PlayCard(Move):
     def can_move(self, game, player):
         return (
             self.card in player.hand
-            and player.actions >= 1
-            and self.card.is_action
+            #and player.actions >= 1 # already checked in outer loop
+            #and self.card.is_action # already checked by strategy
         )
     def do_move(self, game, player):
         # This order is important: while playing, a card is neither part of the hand, nor the discards
@@ -190,6 +190,7 @@ class PlayCard(Move):
         return ""+str(self.card)
 
 class EndActions(Move):
+    card = None
     def can_move(self, game, player):
         return player.actions >= 1
     def do_move(self, game, player):
@@ -198,6 +199,7 @@ class EndActions(Move):
         return "END"
 
 class EndBuy(Move):
+    card = None
     def can_move(self, game, player):
         return True
     def do_move(self, game, player):
@@ -217,6 +219,8 @@ class LinearRankStrategy:
         self.actions = [PlayCard(c) for c in ALL_CARDS if c.is_action] + [EndActions()]
         self.buys = [BuyCard(c) for c in ALL_CARDS] + [EndBuy()]
         self.weight_dist = []
+        # A typical game lasts 10-20 turns.  With a coef of 0.05, a card can
+        # go from 0 to 1 (or 1 to 0) over the course of a game.
         linear_coef = lambda: random.normalvariate(0, 0.05)
         for move in (self.actions + self.buys):
             move.idx = len(self.weight_dist)
@@ -228,6 +232,13 @@ class LinearRankStrategy:
         else:
             self.weights = [self.weight_dist[ii]() for ii in range(num_idx)]
         assert len(self.weights) == num_idx
+        # For now, don't include linear term for actions
+        act_key = lambda x: self.weights[x.idx] #+ game.turn*self.weights[x.idx+1]
+        self.sorted_actions = sorted(self.actions, key=act_key)
+        self.sorted_buys = []
+        for game_turn in range(MAX_TURNS):
+            buy_key = lambda x: self.weights[x.idx] + game_turn*self.weights[x.idx+1]
+            self.sorted_buys.append(sorted(self.buys, key=buy_key))
         self.reset()
     def reset(self):
         # Call once per tournament to reset statistics
@@ -239,16 +250,12 @@ class LinearRankStrategy:
         self.buy_counts_by_turn.clear()
         self.game_lengths.clear()
     def iter_actions(self, game, player):
-        # For now, don't include linear term for actions
-        key = lambda x: self.weights[x.idx] #+ game.turn*self.weights[x.idx+1]
-        yield from sorted(self.actions, key=key)
+        return self.sorted_actions
     def iter_buys(self, game, player):
-        key = lambda x: self.weights[x.idx] + game.turn*self.weights[x.idx+1]
-        yield from sorted(self.buys, key=key)
+        return self.sorted_buys[game.turn]
     def fmt_actions(self):
-        key = lambda x: self.weights[x.idx] #+ game.turn*self.weights[x.idx+1]
-        sorted_actions = sorted(self.actions, key=key)
-        return '   '.join(f"{self.act_counts[m]} {m} ({self.weights[m.idx+1]:.3f})" for m in sorted_actions if self.act_counts[m] > 0)
+        #return '   '.join(f"{self.act_counts[m]} {m} ({self.weights[m.idx+1]:.3f})" for m in self.sorted_actions if self.act_counts[m] > 0)
+        return '   '.join(f"{self.act_counts[m]} {m}" for m in self.sorted_actions if self.act_counts[m] > 0)
     def fmt_buys(self):
         # Refomat into more useful but probably slower form
         cbt = defaultdict(Counter)
@@ -256,21 +263,32 @@ class LinearRankStrategy:
             cbt[turn][card] = count
 
         used_buys = [m for m in self.buys if self.buy_counts[m] > 0]
-        sorted_buys = []
-        key = lambda x: self.weights[x.idx] + game_turn*self.weights[x.idx+1]
-        for game_turn in range(MAX_TURNS):
-            sorted_buys.append(sorted(used_buys, key=key))
+        sorted_used_buys = []
+        for sb in self.sorted_buys:
+            sorted_used_buys.append([m for m in sb if self.buy_counts[m] > 0])
 
         lines = ['']
-        for k, g in itertools.groupby(range(MAX_TURNS), key=lambda x: sorted_buys[x]):
-            g = list(g)
-            cnts = Counter()
-            for game_turn in g:
-                cnts += cbt[game_turn]
-            line = '   '.join(f"{cnts[m]} {m} ({self.weights[m.idx+1]:.3f})" for m in k if cnts[m] > 0)
-            if sum(cnts.values()) > 0:
+        # # Group consecutive lines with same buy priority
+        # for k, g in itertools.groupby(range(MAX_TURNS), key=lambda x: sorted_used_buys[x]):
+        #     g = list(g)
+        #     cnts = Counter()
+        #     for game_turn in g:
+        #         cnts += cbt[game_turn]
+        #     #line = '   '.join(f"{cnts[m]} {m} ({self.weights[m.idx+1]:.3f})" for m in k if cnts[m] > 0)
+        #     line = '   '.join(f"{cnts[m]} {m}" for m in k if cnts[m] > 0)
+        #     if sum(cnts.values()) > 0:
+        #         # avoid blank lines for sequences never played
+        #         lines.append(f'    {min(g)+1:2d}:   '+line)
+
+        # Show every line for turns played
+        for ii, buys in enumerate(sorted_used_buys):
+            line = '   '.join(f"{cbt[ii][m]} {m}" for m in buys if cbt[ii][m] > 0)
+            if sum(cbt[ii].values()) > 0:
                 # avoid blank lines for sequences never played
-                lines.append(f'    {min(g)+1:2d}:   '+line)
+                lines.append(f'    {ii+1:2d}:   '+line)
+
+        line = '   '.join(f"{self.buy_counts[m]} {m} ({self.weights[m.idx+1]:.3f})" for m in self.sorted_buys[0] if self.buy_counts[m] > 0)
+        lines.append(f'    Sum   '+line)
 
         return '\n'.join(lines)
 
@@ -299,7 +317,7 @@ class Player:
                 self.deck, self.discard = self.discard, self.deck
                 random.shuffle(self.deck)
                 if len(self.deck) == 0:
-                    # TODO: Should cards played this turn be eligible to shuffle back in?
+                    # Cards played this turn are not eligible to shuffle back in.
                     break # all cards are in hand already!
             self.hand.append(self.deck.pop())
     def calc_money(self):
@@ -447,7 +465,6 @@ def evolve(strategies):
 def main():
     players = 3
     popsize = 12 * 32 # some multiple of 2, 3, and 4
-    # strategies = [FixedRankStrategy() for _ in range(popsize)]
     strategies = [LinearRankStrategy() for _ in range(popsize)]
 
     for cycle in range(100): # expect to Ctrl-C to exit early
