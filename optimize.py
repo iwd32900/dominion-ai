@@ -147,6 +147,7 @@ STARTING_STOCKPILE = {
     Moat: 10,
 }
 STARTING_DECK = [Copper]*7 + [Estate]*3
+MAX_TURNS = 50
 
 class Move:
     def can_move(self, game, player):
@@ -160,7 +161,7 @@ class BuyCard(Move):
     def can_move(self, game, player):
         return (
             self.card.cost <= player.money
-            and player.buys >= 1
+            #and player.buys >= 1 # already checked in outer loop
             and game.stockpile[self.card] >= 1
         )
     def do_move(self, game, player):
@@ -206,36 +207,12 @@ class EndBuy(Move):
     def __str__(self):
         return "END"
 
-class FixedRankStrategy:
-    def __init__(self, weights=None):
-        self.counts = Counter() # {Card: int}
-        self.actions = [PlayCard(c) for c in ALL_CARDS if c.is_action] + [EndActions()]
-        self.buys = [BuyCard(c) for c in ALL_CARDS] + [EndBuy()]
-        self.weight_dist = []
-        for move in (self.actions + self.buys):
-            move.idx = len(self.weight_dist)
-            self.weight_dist.append(random.random)
-        num_idx = len(self.weight_dist)
-        if weights:
-            self.weights = list(weights)
-        else:
-            self.weights = [self.weight_dist[ii]() for ii in range(num_idx)]
-        assert len(self.weights) == num_idx
-        self.sorted_actions = sorted(self.actions, key=lambda x: self.weights[x.idx])
-        self.sorted_buys = sorted(self.buys, key=lambda x: self.weights[x.idx])
-    def iter_actions(self, game, player):
-        yield from self.sorted_actions
-    def iter_buys(self, game, player):
-        yield from self.sorted_buys
-    def fmt_actions(self):
-        return '   '.join(f"{self.counts[m]} {m}" for m in self.sorted_actions if self.counts[m] > 0)
-    def fmt_buys(self):
-        return '   '.join(f"{self.counts[m]} {m}" for m in self.sorted_buys if self.counts[m] > 0)
-
 class LinearRankStrategy:
     def __init__(self, weights=None):
-        self.counts = Counter() # {Card: int}
-        self.counts_by_turn = Counter() # {(turn, Card): int}
+        self.act_counts = Counter() # {Card: int}
+        self.buy_counts = Counter() # {Card: int}
+        self.act_counts_by_turn = Counter() # {(turn, Card): int}
+        self.buy_counts_by_turn = Counter() # {(turn, Card): int}
         self.game_lengths = Counter() # {int: int}
         self.actions = [PlayCard(c) for c in ALL_CARDS if c.is_action] + [EndActions()]
         self.buys = [BuyCard(c) for c in ALL_CARDS] + [EndBuy()]
@@ -256,8 +233,10 @@ class LinearRankStrategy:
         # Call once per tournament to reset statistics
         self.wins = 0
         self.fitness = 0
-        self.counts.clear()
-        self.counts_by_turn.clear()
+        self.act_counts.clear()
+        self.buy_counts.clear()
+        self.act_counts_by_turn.clear()
+        self.buy_counts_by_turn.clear()
         self.game_lengths.clear()
     def iter_actions(self, game, player):
         # For now, don't include linear term for actions
@@ -269,21 +248,21 @@ class LinearRankStrategy:
     def fmt_actions(self):
         key = lambda x: self.weights[x.idx] #+ game.turn*self.weights[x.idx+1]
         sorted_actions = sorted(self.actions, key=key)
-        return '   '.join(f"{self.counts[m]} {m} ({self.weights[m.idx+1]:.3f})" for m in sorted_actions if self.counts[m] > 0)
+        return '   '.join(f"{self.act_counts[m]} {m} ({self.weights[m.idx+1]:.3f})" for m in sorted_actions if self.act_counts[m] > 0)
     def fmt_buys(self):
         # Refomat into more useful but probably slower form
         cbt = defaultdict(Counter)
-        for (turn,card), count in self.counts_by_turn.items():
+        for (turn,card), count in self.buy_counts_by_turn.items():
             cbt[turn][card] = count
 
-        used_buys = [m for m in self.buys if self.counts[m] > 0]
+        used_buys = [m for m in self.buys if self.buy_counts[m] > 0]
         sorted_buys = []
         key = lambda x: self.weights[x.idx] + game_turn*self.weights[x.idx+1]
-        for game_turn in range(40):
+        for game_turn in range(MAX_TURNS):
             sorted_buys.append(sorted(used_buys, key=key))
 
         lines = ['']
-        for k, g in itertools.groupby(range(40), key=lambda x: sorted_buys[x]):
+        for k, g in itertools.groupby(range(MAX_TURNS), key=lambda x: sorted_buys[x]):
             g = list(g)
             cnts = Counter()
             for game_turn in g:
@@ -357,8 +336,8 @@ class Game:
         )
     def run(self):
         game = self
-        for turn in range(100):
-            game.turn = turn # counts from 0 to make LinearRankStrategy work better
+        for turn in range(MAX_TURNS):
+            game.turn = turn # starts from 0 to make LinearRankStrategy work better
             # print(f"Round {game.turn}")
             for player in game.players:
                 if game.is_over():
@@ -370,8 +349,8 @@ class Game:
                         if action.can_move(game, player):
                             # print(f"    {action}")
                             action.do_move(game, player)
-                            player.strategy.counts[action] += 1
-                            player.strategy.counts_by_turn[turn, action] += 1
+                            player.strategy.act_counts[action] += 1
+                            player.strategy.act_counts_by_turn[turn, action] += 1
                             break
                 player.calc_money()
                 while player.buys > 0 and player.money > 0:
@@ -379,8 +358,8 @@ class Game:
                         if buy.can_move(game, player):
                             # print(f"    {buy}")
                             buy.do_move(game, player)
-                            player.strategy.counts[buy] += 1
-                            player.strategy.counts_by_turn[turn, buy] += 1
+                            player.strategy.buy_counts[buy] += 1
+                            player.strategy.buy_counts_by_turn[turn, buy] += 1
                             break
                 player.draw_hand()
 
