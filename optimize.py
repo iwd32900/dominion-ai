@@ -43,7 +43,18 @@ class AdventurerCard(Card):
         super().__init__("Adventurer", cost=6, is_action=True)
     def play(self, game, player):
         super().play(game, player)
-        raise NotImplementedError()
+        treasures = 0
+        # After 50 tries, we assume there are no more treasures in the deck!
+        for _ in range(50):
+            reveal = player.reveal_cards(1, list())
+            if not reveal: break # deck is exhausted
+            card = reveal[0]
+            if card.money_in_hand:
+                player.hand.append(card)
+                treasures += 1
+                if treasures >= 2: break
+            else:
+                player.discard.append(card)
 
 class BureaucratCard(Card):
     def __init__(self):
@@ -60,6 +71,20 @@ class BureaucratCard(Card):
                 if card.is_victory:
                     defender.deck.append(defender.hand.pop(ii))
                     break
+
+class ChancellorCard(Card):
+    def __init__(self):
+        super().__init__("Chancellor", cost=3, is_action=True, money_when_played=2)
+    def play(self, game, player):
+        super().play(game, player)
+        if len(player.deck) == 0 or len(player.discard) == 0:
+            return # action has no effect, avoid divide-by-zero
+        # Heuristic:  if there's a higher fraction of useless cards in the deck, then reshuffle
+        deck_vp = len([c for c in player.deck if c.is_victory or c == Curse]) / len(player.deck)
+        discard_vp = len([c for c in player.discard if c.is_victory or c == Curse]) / len(player.discard)
+        if deck_vp > discard_vp:
+            player.discard.extend(player.deck)
+            player.deck.clear()
 
 class CouncilRoomCard(Card):
     def __init__(self):
@@ -109,21 +134,26 @@ Village = Card("Village", cost=3, actions_when_played=2, cards_when_played=1, is
 Woodcutter = Card("Woodcutter", cost=5, buys_when_played=1, money_when_played=2, is_action=True)
 
 Witch = WitchCard()
+Adventurer = AdventurerCard()
 Bureaucrat = BureaucratCard()
 CouncilRoom = CouncilRoomCard()
 Mine = MineCard()
 Moat = MoatCard()
 
+Chancellor = ChancellorCard()
+
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Smithy, Village, Woodcutter]
-DETERMINISTIC_CARDS = [Bureaucrat, CouncilRoom, Mine, Moat]
+DETERMINISTIC_CARDS = [Adventurer, Bureaucrat, CouncilRoom, Mine, Moat]
+HEURISTIC_CARDS = [ChancellorCard]
 # ALL_CARDS = MINIMAL_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Gardens]
 # ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Festival, Laboratory, Market, Village, Woodcutter] # no Smithy
 # ALL_CARDS = MINIMAL_CARDS + [Witch]
 # ALL_CARDS = MINIMAL_CARDS + [Witch, Moat]
-ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + [Gardens, Witch]
+# ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + [Gardens, Witch]
+ALL_CARDS = MINIMAL_CARDS + HEURISTIC_CARDS
 
 STARTING_STOCKPILE = {
     Copper: 60,
@@ -141,10 +171,12 @@ STARTING_STOCKPILE = {
     Village: 10,
     Woodcutter: 10,
     Witch: 10,
+    Adventurer: 10,
     Bureaucrat: 10,
     CouncilRoom: 10,
     Mine: 10,
     Moat: 10,
+    Chancellor: 10,
 }
 STARTING_DECK = [Copper]*7 + [Estate]*3
 MAX_TURNS = 50
@@ -327,6 +359,8 @@ class Player:
         self.money = 0
         self.draw_cards(5)
     def draw_cards(self, num):
+        self.reveal_cards(num, self.hand)
+    def reveal_cards(self, num, into_list):
         for ii in range(num):
             if len(self.deck) == 0:
                 self.deck, self.discard = self.discard, self.deck
@@ -334,7 +368,8 @@ class Player:
                 if len(self.deck) == 0:
                     # Cards played this turn are not eligible to shuffle back in.
                     break # all cards are in hand already!
-            self.hand.append(self.deck.pop())
+            into_list.append(self.deck.pop())
+        return into_list
     def calc_money(self):
         self.money = (
             sum(c.money_when_played for c in self.played)
