@@ -9,6 +9,7 @@ class Card:
     cost = 0
     is_action = False
     is_victory = False
+    is_treasure = False
     victory_points = 0
     money_in_hand = 0
     money_when_played = 0
@@ -114,10 +115,30 @@ class MoatCard(Card):
     def __init__(self):
         super().__init__("Moat", cost=2, is_action=True, cards_when_played=2)
 
+class ThiefCard(Card):
+    def __init__(self):
+        super().__init__("Thief", cost=4, is_action=True)
+    def play(self, game, attacker):
+        super().play(game, attacker)
+        for defender in game.players:
+            if defender == attacker: # not really an attack
+                continue
+            cards = defender.reveal_cards(2, list())
+            # print(f"got {cards}    deck {defender.deck}    discard {defender.discard}")
+            if not cards: return
+            cards.sort(key=lambda x: (x.is_treasure, x.money_in_hand), reverse=True)
+            if cards[0] in [Gold, Silver]:
+                attacker.discard.append(cards[0])
+            elif not cards[0].is_treasure:
+                defender.discard.append(cards[0])
+            else:
+                assert cards[0] == Copper # and we trash it
+            defender.discard.extend(cards[1:])
+
 # Singleton objects
-Copper = Card("Copper", cost=0, money_in_hand=1)
-Silver = Card("Silver", cost=3, money_in_hand=2)
-Gold   = Card("Gold",   cost=6, money_in_hand=3)
+Copper = Card("Copper", cost=0, money_in_hand=1, is_treasure=True)
+Silver = Card("Silver", cost=3, money_in_hand=2, is_treasure=True)
+Gold   = Card("Gold",   cost=6, money_in_hand=3, is_treasure=True)
 
 Estate   = Card("Estate",   cost=2, victory_points=1, is_victory=True)
 Duchy    = Card("Duchy",    cost=5, victory_points=3, is_victory=True)
@@ -141,11 +162,12 @@ Mine = MineCard()
 Moat = MoatCard()
 
 Chancellor = ChancellorCard()
+Thief = ThiefCard()
 
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Smithy, Village, Woodcutter]
 DETERMINISTIC_CARDS = [Adventurer, Bureaucrat, CouncilRoom, Mine, Moat]
-HEURISTIC_CARDS = [ChancellorCard]
+HEURISTIC_CARDS = [Chancellor, Thief]
 # ALL_CARDS = MINIMAL_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Gardens]
 # ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS
@@ -177,6 +199,7 @@ STARTING_STOCKPILE = {
     Mine: 10,
     Moat: 10,
     Chancellor: 10,
+    Thief: 10,
 }
 STARTING_DECK = [Copper]*7 + [Estate]*3
 MAX_TURNS = 50
@@ -367,6 +390,7 @@ class Player:
                 random.shuffle(self.deck)
                 if len(self.deck) == 0:
                     # Cards played this turn are not eligible to shuffle back in.
+                    # assert len(self.discard) == 0
                     break # all cards are in hand already!
             into_list.append(self.deck.pop())
         return into_list
