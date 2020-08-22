@@ -1,4 +1,8 @@
+## TODO
+
+
 ## The literature
+
 [Dominion Strategy](https://dominionstrategy.com/)
 [Provincial, a Dominion AI](https://graphics.stanford.edu/~mdfisher/DominionAI.html)
 [Deep RL for Dominion](http://cs230.stanford.edu/projects_fall_2019/reports/26260348.pdf)

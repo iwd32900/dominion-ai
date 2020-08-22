@@ -175,12 +175,12 @@ class BuyCard(Move):
 class PlayCard(Move):
     def __init__(self, card):
         self.card = card
-    def can_move(self, game, player):
-        return (
-            self.card in player.hand
-            #and player.actions >= 1 # already checked in outer loop
-            #and self.card.is_action # already checked by strategy
-        )
+    # def can_move(self, game, player):
+    #     return (
+    #         self.card in player.hand
+    #         #and player.actions >= 1 # already checked in outer loop
+    #         #and self.card.is_action # already checked by strategy
+    #     )
     def do_move(self, game, player):
         # This order is important: while playing, a card is neither part of the hand, nor the discards
         player.hand.remove(self.card)
@@ -216,7 +216,9 @@ class LinearRankStrategy:
         self.act_counts_by_turn = Counter() # {(turn, Card): int}
         self.buy_counts_by_turn = Counter() # {(turn, Card): int}
         self.game_lengths = Counter() # {int: int}
-        self.actions = [PlayCard(c) for c in ALL_CARDS if c.is_action] + [EndActions()]
+        # Makes no sense to leave playable actions in the hand, if you bought them, so:
+        self.actions = [PlayCard(c) for c in ALL_CARDS if c.is_action] #+ [EndActions()]
+        # EndBuy is important:  allows us to declare some cards have negative value to us and should not be bought
         self.buys = [BuyCard(c) for c in ALL_CARDS] + [EndBuy()]
         self.weight_dist = []
         # A typical game lasts 10-20 turns.  With a coef of 0.05, a card can
@@ -232,8 +234,18 @@ class LinearRankStrategy:
         else:
             self.weights = [self.weight_dist[ii]() for ii in range(num_idx)]
         assert len(self.weights) == num_idx
+        # Raw sort order is used for things outside the normal Action phase, like Throne Rooms.
         # For now, don't include linear term for actions
-        act_key = lambda x: self.weights[x.idx] #+ game.turn*self.weights[x.idx+1]
+        raw_act_key = lambda x: self.weights[x.idx] #+ game.turn*self.weights[x.idx+1]
+        self.raw_sorted_actions = sorted(self.actions, key=raw_act_key)
+        # Heuristic:
+        # When playing a normal turn, cards that give extra actions come first.
+        # Within those, cards that give extra draws come first, so there are more options.
+        def act_key(x):
+            if x.card.actions_when_played:
+                return (0, -x.card.cards_when_played, self.weights[x.idx])
+            else:
+                return (1, 0, self.weights[x.idx])
         self.sorted_actions = sorted(self.actions, key=act_key)
         self.sorted_buys = []
         for game_turn in range(MAX_TURNS):
@@ -251,6 +263,8 @@ class LinearRankStrategy:
         self.game_lengths.clear()
     def iter_actions(self, game, player):
         return self.sorted_actions
+    def iter_actions_raw(self, game, player):
+        return self.raw_sorted_actions
     def iter_buys(self, game, player):
         return self.sorted_buys[game.turn]
     def fmt_actions(self):
@@ -296,6 +310,7 @@ class Player:
     def __init__(self, name, deck, strategy):
         self.name = name
         self.deck = list(deck)
+        random.shuffle(self.deck)
         self.strategy = strategy
         assert len(self.deck) == 10
         self.hand = []
@@ -364,12 +379,15 @@ class Game:
                 # print(f"    hand = {', '.join(str(x) for x in player.hand)}")
                 while player.actions > 0:
                     for action in player.strategy.iter_actions(game, player):
-                        if action.can_move(game, player):
+                        # Inlining this check for speed (hopefully):
+                        if action.card in player.hand: # action.can_move(game, player)
                             # print(f"    {action}")
                             action.do_move(game, player)
                             player.strategy.act_counts[action] += 1
                             player.strategy.act_counts_by_turn[turn, action] += 1
                             break
+                    else:
+                        break # no playable actions
                 player.calc_money()
                 while player.buys > 0 and player.money > 0:
                     for buy in player.strategy.iter_buys(game, player):
