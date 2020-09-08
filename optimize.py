@@ -289,6 +289,16 @@ class Strategy:
         self.act_counts_by_turn.clear()
         self.buy_counts_by_turn.clear()
         self.game_lengths.clear()
+    def start_game(self):
+        pass
+    def accept_action(self, action, game):
+        self.act_counts[action] += 1
+        self.act_counts_by_turn[game.turn, action] += 1
+    def accept_buy(self, buy, game):
+        self.buy_counts[buy] += 1
+        self.buy_counts_by_turn[game.turn, buy] += 1
+    def end_game(self, reward):
+        pass
     def iter_actions(self, game, player):
         a = list(self.actions)
         random.shuffle(a)
@@ -462,6 +472,24 @@ class Game:
         )
     def run(self):
         game = self
+        for player in game.players:
+            player.strategy.start_game()
+
+        self.run_loop()
+
+        for player in game.players:
+            vp = player.calc_victory_points()
+            player.strategy.fitness += vp
+            score = (vp, -player.turns_played)
+            best = max((p.calc_victory_points(), -p.turns_played) for p in game.players if p != player)
+            if score > best: reward = 1 # win
+            elif score == best:  reward = 0.5 # tie
+            else: reward = 0 # loss
+            player.strategy.wins += reward
+            player.strategy.game_lengths[player.turns_played] += 1
+            player.strategy.end_game(reward)
+    def run_loop(self):
+        game = self
         for turn in range(MAX_TURNS):
             game.turn = turn # starts from 0 to make LinearRankStrategy work better
             # print(f"Round {game.turn}")
@@ -477,8 +505,7 @@ class Game:
                         if action.card in player.hand: # action.can_move(game, player)
                             # print(f"    {action}")
                             action.do_move(game, player)
-                            player.strategy.act_counts[action] += 1
-                            player.strategy.act_counts_by_turn[turn, action] += 1
+                            player.strategy.accept_action(action, game)
                             break
                     else:
                         break # no playable actions
@@ -488,10 +515,10 @@ class Game:
                         if buy.can_move(game, player):
                             # print(f"    {buy}")
                             buy.do_move(game, player)
-                            player.strategy.buy_counts[buy] += 1
-                            player.strategy.buy_counts_by_turn[turn, buy] += 1
+                            player.strategy.accept_buy(buy, game)
                             break
                 player.draw_hand()
+        # exits via premature return -- this line never reached unless game runs long!
 
 def get_starting_stockpile(num_players):
     sp = dict(STARTING_STOCKPILE)
@@ -528,14 +555,6 @@ def run_tournament(strategies, players_per_game=3, games_per_strategy=50):
             players = [Player(str(jj+1), STARTING_DECK, strategies[ii+jj]) for jj in range(players_per_game)]
             game = Game(players, get_starting_stockpile(players_per_game))
             game.run()
-            for player in players:
-                vp = player.calc_victory_points()
-                player.strategy.fitness += vp
-                score = (vp, -player.turns_played)
-                best = max((p.calc_victory_points(), -p.turns_played) for p in players if p != player)
-                if score > best: player.strategy.wins += 1 # win
-                elif score == best: player.strategy.wins += 0.5 # tie
-                player.strategy.game_lengths[player.turns_played] += 1
 
     strategies.sort(key=lambda x: (x.wins, x.fitness), reverse=True)
 
