@@ -1,5 +1,6 @@
 from collections import Counter, defaultdict
 import itertools
+import json
 import random
 import time
 
@@ -121,7 +122,7 @@ class ThiefCard(Card):
     def play(self, game, attacker):
         super().play(game, attacker)
         for defender in game.players:
-            if defender == attacker: # not really an attack
+            if defender == attacker or (Moat in defender.hand):
                 continue
             cards = defender.reveal_cards(2, list())
             # print(f"got {cards}    deck {defender.deck}    discard {defender.discard}")
@@ -168,14 +169,16 @@ MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Smithy, Village, Woodcutter]
 DETERMINISTIC_CARDS = [Adventurer, Bureaucrat, CouncilRoom, Mine, Moat]
 HEURISTIC_CARDS = [Chancellor, Thief]
-# ALL_CARDS = MINIMAL_CARDS
+ALL_CARDS = MINIMAL_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Gardens]
 # ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Festival, Laboratory, Market, Village, Woodcutter] # no Smithy
 # ALL_CARDS = MINIMAL_CARDS + [Witch]
 # ALL_CARDS = MINIMAL_CARDS + [Witch, Moat]
 # ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + [Gardens, Witch]
-ALL_CARDS = MINIMAL_CARDS + HEURISTIC_CARDS
+# ALL_CARDS = MINIMAL_CARDS + HEURISTIC_CARDS
+# ALL_CARDS = MINIMAL_CARDS + [Smithy, Moat, Thief]
+# ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + HEURISTIC_CARDS + [Gardens, Witch]
 
 STARTING_STOCKPILE = {
     Copper: 60,
@@ -239,6 +242,7 @@ class PlayCard(Move):
     def do_move(self, game, player):
         # This order is important: while playing, a card is neither part of the hand, nor the discards
         player.hand.remove(self.card)
+        player.actions -= 1
         self.card.play(game, player)
         player.played.append(self.card)
     def __str__(self):
@@ -264,8 +268,8 @@ class EndBuy(Move):
     def __str__(self):
         return "END"
 
-class LinearRankStrategy:
-    def __init__(self, weights=None):
+class Strategy:
+    def __init__(self):
         self.act_counts = Counter() # {Card: int}
         self.buy_counts = Counter() # {Card: int}
         self.act_counts_by_turn = Counter() # {(turn, Card): int}
@@ -275,9 +279,36 @@ class LinearRankStrategy:
         self.actions = [PlayCard(c) for c in ALL_CARDS if c.is_action] #+ [EndActions()]
         # EndBuy is important:  allows us to declare some cards have negative value to us and should not be bought
         self.buys = [BuyCard(c) for c in ALL_CARDS] + [EndBuy()]
+        self.reset()
+    def reset(self):
+        # Call once per tournament to reset statistics
+        self.wins = 0
+        self.fitness = 0
+        self.act_counts.clear()
+        self.buy_counts.clear()
+        self.act_counts_by_turn.clear()
+        self.buy_counts_by_turn.clear()
+        self.game_lengths.clear()
+    def iter_actions(self, game, player):
+        a = list(self.actions)
+        random.shuffle(a)
+        return a
+    def iter_buys(self, game, player):
+        b = list(self.buys)
+        random.shuffle(b)
+        return b
+    def fmt_actions(self):
+        return 'not implemented'
+    def fmt_buys(self):
+        return 'not implemented'
+
+class LinearRankStrategy(Strategy):
+    def __init__(self, weights=None):
+        super().__init__()
         self.weight_dist = []
         # A typical game lasts 10-20 turns.  With a coef of 0.05, a card can
         # go from 0 to 1 (or 1 to 0) over the course of a game.
+        # linear_coef = lambda: 0 # fixed-rank strategy
         linear_coef = lambda: random.normalvariate(0, 0.05)
         for move in (self.actions + self.buys):
             move.idx = len(self.weight_dist)
@@ -306,16 +337,6 @@ class LinearRankStrategy:
         for game_turn in range(MAX_TURNS):
             buy_key = lambda x: self.weights[x.idx] + game_turn*self.weights[x.idx+1]
             self.sorted_buys.append(sorted(self.buys, key=buy_key))
-        self.reset()
-    def reset(self):
-        # Call once per tournament to reset statistics
-        self.wins = 0
-        self.fitness = 0
-        self.act_counts.clear()
-        self.buy_counts.clear()
-        self.act_counts_by_turn.clear()
-        self.buy_counts_by_turn.clear()
-        self.game_lengths.clear()
     def iter_actions(self, game, player):
         return self.sorted_actions
     def iter_actions_raw(self, game, player):
@@ -323,7 +344,6 @@ class LinearRankStrategy:
     def iter_buys(self, game, player):
         return self.sorted_buys[game.turn]
     def fmt_actions(self):
-        #return '   '.join(f"{self.act_counts[m]} {m} ({self.weights[m.idx+1]:.3f})" for m in self.sorted_actions if self.act_counts[m] > 0)
         return '   '.join(f"{self.act_counts[m]} {m}" for m in self.sorted_actions if self.act_counts[m] > 0)
     def fmt_buys(self):
         # Refomat into more useful but probably slower form
@@ -336,20 +356,8 @@ class LinearRankStrategy:
         for sb in self.sorted_buys:
             sorted_used_buys.append([m for m in sb if self.buy_counts[m] > 0])
 
-        lines = ['']
-        # # Group consecutive lines with same buy priority
-        # for k, g in itertools.groupby(range(MAX_TURNS), key=lambda x: sorted_used_buys[x]):
-        #     g = list(g)
-        #     cnts = Counter()
-        #     for game_turn in g:
-        #         cnts += cbt[game_turn]
-        #     #line = '   '.join(f"{cnts[m]} {m} ({self.weights[m.idx+1]:.3f})" for m in k if cnts[m] > 0)
-        #     line = '   '.join(f"{cnts[m]} {m}" for m in k if cnts[m] > 0)
-        #     if sum(cnts.values()) > 0:
-        #         # avoid blank lines for sequences never played
-        #         lines.append(f'    {min(g)+1:2d}:   '+line)
-
         # Show every line for turns played
+        lines = ['']
         for ii, buys in enumerate(sorted_used_buys):
             line = '   '.join(f"{cbt[ii][m]} {m}" for m in buys if cbt[ii][m] > 0)
             if sum(cbt[ii].values()) > 0:
@@ -361,6 +369,31 @@ class LinearRankStrategy:
 
         return '\n'.join(lines)
 
+class ExpectedSarsaStrategy(Strategy):
+    def __init__(self, weights=None):
+        super().__init__(weights)
+        self.q = defaultdict(lambda: [0.5]*len(self.buys)) # {state_idx: [action_values]}
+        self.last_s = None
+        self.last_a = None
+    def state_idx(self, game, player):
+        # With competent players, most games end within ~20 turns
+        MAX_T = 20
+        t = min(game.turn, MAX_T)
+        # In the basic game, 5 Gold = $15 is the max in one hand
+        # actual $   0, 1, 2, 3, 4, 5, 6, 7, 8, 9 10 11 12 13 14 15
+        BUY_POWER = [0, 0, 1, 2, 2, 3, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5]
+        MAX_B = 5
+        b = BUY_POWER[player.calc_money()]
+        s = player.calc_victory_points() - max(p.calc_victory_points() for p in game.players if p != player)
+        if s < -13: s = -13
+        elif s > 13: s = 13
+        s += 13
+        MAX_S = 26
+        # delta score is [0,26], because 13 is 2 Provinces plus some
+        p = game.stockpile[Province] # [0,8] in the 2-player game
+        idx = (MAX_S+1)*( (MAX_B+1)*( (MAX_T+1)*p + t ) + b ) + s
+        return idx
+
 class Player:
     def __init__(self, name, deck, strategy):
         self.name = name
@@ -368,6 +401,7 @@ class Player:
         random.shuffle(self.deck)
         self.strategy = strategy
         assert len(self.deck) == 10
+        self.turns_played = 0
         self.hand = []
         self.played = [] # this turn
         self.discard = []
@@ -436,6 +470,7 @@ class Game:
                     return
                 # print(f"  Player {player.name}    pts = {player.calc_victory_points()}")
                 # print(f"    hand = {', '.join(str(x) for x in player.hand)}")
+                player.turns_played += 1
                 while player.actions > 0:
                     for action in player.strategy.iter_actions(game, player):
                         # Inlining this check for speed (hopefully):
@@ -493,13 +528,14 @@ def run_tournament(strategies, players_per_game=3, games_per_strategy=50):
             players = [Player(str(jj+1), STARTING_DECK, strategies[ii+jj]) for jj in range(players_per_game)]
             game = Game(players, get_starting_stockpile(players_per_game))
             game.run()
-            max_vp = max(player.calc_victory_points() for player in players)
             for player in players:
                 vp = player.calc_victory_points()
                 player.strategy.fitness += vp
-                if vp == max_vp: player.strategy.wins += 1 # get credit on tying for first
-                player.strategy.game_lengths[game.turn+1] += 1
-
+                score = (vp, -player.turns_played)
+                best = max((p.calc_victory_points(), -p.turns_played) for p in players if p != player)
+                if score > best: player.strategy.wins += 1 # win
+                elif score == best: player.strategy.wins += 0.5 # tie
+                player.strategy.game_lengths[player.turns_played] += 1
 
     strategies.sort(key=lambda x: (x.wins, x.fitness), reverse=True)
 
@@ -540,7 +576,7 @@ def evolve(strategies):
     return newstrat
 
 def main():
-    players = 3
+    players = 2
     popsize = 12 * 32 # some multiple of 2, 3, and 4
     strategies = [LinearRankStrategy() for _ in range(popsize)]
 
@@ -552,7 +588,12 @@ def main():
             print(f"  actions: {strategy.fmt_actions()}")
             print(f"  buys:    {strategy.fmt_buys()}")
         print("")
+        with open("strategies.json", "w") as f:
+            json.dump([{
+                'weights': s.weights,
+            } for s in strategies[:10]], f)
         strategies = evolve(strategies)
 
-main()
+if __name__ == '__main__':
+    main()
 

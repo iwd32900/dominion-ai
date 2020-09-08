@@ -1,6 +1,5 @@
 ## TODO
 
-
 ## The literature
 
 [Dominion Strategy](https://dominionstrategy.com/)
@@ -8,6 +7,8 @@
 [Deep RL for Dominion](http://cs230.stanford.edu/projects_fall_2019/reports/26260348.pdf)
 [Dominion genetic algorithm](https://github.com/octachrome/dominion)
 
+[Sutton & Barton, "Reinforcement Learning: An Introduction", 2020](http://www.incompleteideas.net/book/the-book.html)
+[Fast.AI Course](https://course.fast.ai/videos/?lesson=1)
 [Spinning Up in Deep RL](https://spinningup.openai.com/en/latest/)
 
 ## The minimal game
