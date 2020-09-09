@@ -291,13 +291,13 @@ class Strategy:
         self.game_lengths.clear()
     def start_game(self):
         pass
-    def accept_action(self, action, game):
+    def accept_action(self, action, game, player):
         self.act_counts[action] += 1
         self.act_counts_by_turn[game.turn, action] += 1
-    def accept_buy(self, buy, game):
+    def accept_buy(self, buy, game, player):
         self.buy_counts[buy] += 1
         self.buy_counts_by_turn[game.turn, buy] += 1
-    def end_game(self, reward):
+    def end_game(self, reward, game, player):
         pass
     def iter_actions(self, game, player):
         a = list(self.actions)
@@ -379,13 +379,35 @@ class LinearRankStrategy(Strategy):
 
         return '\n'.join(lines)
 
+def argmax(xs):
+    # Returns last one on ties, which is OK
+    # return max((x,i) for i,x in enumerate(xs))[1]
+    return max(zip(xs, range(len(xs))))[1]
+
+def dot(xs, ys):
+    accum = 0
+    for x, y in zip(xs, ys):
+        accum += x*y
+    return accum
+
+def sorted_by(target, keys, reverse=False):
+    return [t for k, t in sorted(zip(keys, target), key=lambda x: x[0], reverse=reverse)]
+
 class ExpectedSarsaStrategy(Strategy):
-    def __init__(self, weights=None):
-        super().__init__(weights)
+    '''
+    Based on the "Expected Sarsa" algorithm in section 6.6
+    of Sutton & Barton, "Reinforcement Learning: An Introduction", 2020
+    '''
+    def __init__(self):
+        super().__init__()
         self.q = defaultdict(lambda: [0.5]*len(self.buys)) # {state_idx: [action_values]}
-        self.last_s = None
-        self.last_a = None
+        # Because our reward is 1 for a win and 0 for a loss,
+        # our action values are estimated probabilities of winning the game
+        # from the specified (state, action).
     def state_idx(self, game, player):
+        # To start, learn a static strategy, regardless of game state:
+        return 0
+
         # With competent players, most games end within ~20 turns
         MAX_T = 20
         t = min(game.turn, MAX_T)
@@ -393,7 +415,7 @@ class ExpectedSarsaStrategy(Strategy):
         # actual $   0, 1, 2, 3, 4, 5, 6, 7, 8, 9 10 11 12 13 14 15
         BUY_POWER = [0, 0, 1, 2, 2, 3, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5]
         MAX_B = 5
-        b = BUY_POWER[player.calc_money()]
+        b = BUY_POWER[player.money] # calc_money() must have been called at start of buy phase
         s = player.calc_victory_points() - max(p.calc_victory_points() for p in game.players if p != player)
         if s < -13: s = -13
         elif s > 13: s = 13
@@ -403,6 +425,69 @@ class ExpectedSarsaStrategy(Strategy):
         p = game.stockpile[Province] # [0,8] in the 2-player game
         idx = (MAX_S+1)*( (MAX_B+1)*( (MAX_T+1)*p + t ) + b ) + s
         return idx
+    def start_game(self):
+        self.last_s = None
+        self.last_a = None
+    def accept_buy(self, buy, game, player):
+        super().accept_buy(buy, game, player)
+        # Convert current game state into an integer
+        s = self.state_idx(game, player)
+        # Lookup all action-values for current state
+        q = self.q[s]
+        if self.last_s is not None:
+            # and all action-values for previous state
+            last_q = self.q[self.last_s]
+            last_a = self.last_a
+            # Use an epsilon-greedy policy; eps = 0.1 is common choice in the book.
+            pi = [eps/len(q)] * len(q)
+            pi[argmax(q)] += (1-eps)
+            # Update the value of the last action taken
+            E_q = dot(pi, q)
+            assert 0 <= E_q <= 1
+            last_q[last_a] += alpha*(E_q - last_q[last_a])
+        # Save this move for next time
+        self.last_s = s
+        self.last_a = self.buys.index(buy)
+    def iter_buys(self, game, player):
+        s = self.state_idx(game, player)
+        # Lookup all action-values for current state
+        q = self.q[s]
+        # Use an epsilon-greedy policy; eps = 0.1 is common choice in the book.
+        if random.random() < eps:
+            # Sort the possible buys in random order
+            b = list(self.buys)
+            random.shuffle(b)
+        else:
+            # Follow the policy, sort actions by value
+            b = sorted_by(self.buys, q, reverse=True)
+        return b
+    def end_game(self, reward, game, player):
+        if self.last_s is None:
+            assert False, "Games shouldn't end with no moves taken"
+        last_q = self.q[self.last_s]
+        last_a = self.last_a
+        last_q[last_a] += alpha*(reward - last_q[last_a])
+    def fmt_buys(self):
+        # Refomat into more useful but probably slower form
+        cbt = defaultdict(Counter)
+        for (turn,card), count in self.buy_counts_by_turn.items():
+            cbt[turn][card] = count
+
+        sorted_buys = sorted(self.buys, key=lambda m: (getattr(m.card, 'cost', 0), self.buy_counts[m]), reverse=True)
+
+        # Show every line for turns played
+        lines = ['']
+        for ii in range(len(cbt)):
+            line = '   '.join(f"{cbt[ii][m]} {m}" for m in sorted_buys if cbt[ii][m] > 0)
+            if sum(cbt[ii].values()) > 0:
+                # avoid blank lines for sequences never played
+                lines.append(f'    {ii+1:2d}:   '+line)
+
+        line = '   '.join(f"{self.buy_counts[m]} {m}" for m in sorted_buys if self.buy_counts[m] > 0)
+        lines.append(f'    Sum   '+line)
+        lines.append(f'    Visited {len(self.q)} states')
+
+        return '\n'.join(lines)
 
 class Player:
     def __init__(self, name, deck, strategy):
@@ -487,7 +572,7 @@ class Game:
             else: reward = 0 # loss
             player.strategy.wins += reward
             player.strategy.game_lengths[player.turns_played] += 1
-            player.strategy.end_game(reward)
+            player.strategy.end_game(reward, game, player)
     def run_loop(self):
         game = self
         for turn in range(MAX_TURNS):
@@ -505,7 +590,7 @@ class Game:
                         if action.card in player.hand: # action.can_move(game, player)
                             # print(f"    {action}")
                             action.do_move(game, player)
-                            player.strategy.accept_action(action, game)
+                            player.strategy.accept_action(action, game, player)
                             break
                     else:
                         break # no playable actions
@@ -515,7 +600,7 @@ class Game:
                         if buy.can_move(game, player):
                             # print(f"    {buy}")
                             buy.do_move(game, player)
-                            player.strategy.accept_buy(buy, game)
+                            player.strategy.accept_buy(buy, game, player)
                             break
                 player.draw_hand()
         # exits via premature return -- this line never reached unless game runs long!
@@ -594,7 +679,7 @@ def evolve(strategies):
         newstrat.append(p1.__class__(w))
     return newstrat
 
-def main():
+def main_evol():
     players = 2
     popsize = 12 * 32 # some multiple of 2, 3, and 4
     strategies = [LinearRankStrategy() for _ in range(popsize)]
@@ -613,6 +698,32 @@ def main():
             } for s in strategies[:10]], f)
         strategies = evolve(strategies)
 
+# Not sure what the learning rate should be...
+alpha = 0.1
+eps = 0.1
+def main_rl():
+    players = 2
+    popsize = 4 # some multiple of 2, 3, and 4
+    strategies = [ExpectedSarsaStrategy() for _ in range(popsize)]
+
+    for cycle in range(100): # expect to Ctrl-C to exit early
+        start = time.time()
+        run_tournament(strategies, players)
+        for strategy in strategies[:1]:
+            print(f"round {cycle}    wins {strategy.wins}    fitness {strategy.fitness}    game len {','.join(str(k) for k,v in strategy.game_lengths.most_common(3))}    {players} players    {time.time() - start:.2f} sec")
+            print(f"  actions: {strategy.fmt_actions()}")
+            print(f"  buys:    {strategy.fmt_buys()}")
+        print("")
+        # with open("strategies.json", "w") as f:
+        #     json.dump([{
+        #         'weights': s.weights,
+        #     } for s in strategies[:10]], f)
+        # strategies = evolve(strategies)
+        global eps
+        # eps *= 0.950 # slowly anneal toward greedy over 100 rounds
+        # eps *= 0.995 # slowly anneal toward greedy over 1000 rounds
+
 if __name__ == '__main__':
-    main()
+    # main_evol()
+    main_rl()
 
