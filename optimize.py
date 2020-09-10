@@ -310,7 +310,26 @@ class Strategy:
     def fmt_actions(self):
         return 'not implemented'
     def fmt_buys(self):
-        return 'not implemented'
+        # Refomat into more useful but probably slower form
+        cbt = defaultdict(Counter)
+        for (turn,card), count in self.buy_counts_by_turn.items():
+            cbt[turn][card] = count
+
+        # Show every line for turns played
+        sorted_buys = sorted(self.buys, key=lambda m: (getattr(m.card, 'cost', 0), self.buy_counts[m]), reverse=True)
+        lines = ['']
+        for ii in range(len(cbt)):
+            # sorted_buys = sorted(self.buys, key=lambda m: cbt[ii][m], reverse=True)
+            line = '   '.join(f"{cbt[ii][m]} {m}" for m in sorted_buys if cbt[ii][m] > 0)
+            if sum(cbt[ii].values()) > 0:
+                # avoid blank lines for sequences never played
+                lines.append(f'    {ii+1:2d}:   '+line)
+
+        sorted_buys = sorted(self.buys, key=lambda m: (getattr(m.card, 'cost', 0), self.buy_counts[m]), reverse=True)
+        line = '   '.join(f"{self.buy_counts[m]} {m}" for m in sorted_buys if self.buy_counts[m] > 0)
+        lines.append(f'    Sum   '+line)
+
+        return '\n'.join(lines)
 
 class LinearRankStrategy(Strategy):
     def __init__(self, weights=None):
@@ -391,6 +410,8 @@ def dot(xs, ys):
     return accum
 
 def sorted_by(target, keys, reverse=False):
+    # Book specifies breaking ties at random -- maybe that's important?
+    keys = [(k, random.random()) for k in keys]
     return [t for k, t in sorted(zip(keys, target), key=lambda x: x[0], reverse=reverse)]
 
 class TemporalDifferenceStrategy(Strategy):
@@ -409,15 +430,16 @@ class TemporalDifferenceStrategy(Strategy):
         # return 0
 
         # With competent players, most games end within ~20 turns
-        MAX_T = 20
-        t = min(game.turn, MAX_T)
-        return (game.turn//10,)
+        t = min(game.turn, 29)//5
+        return t
 
         # In the basic game, 5 Gold = $15 is the max in one hand
         # actual $   0, 1, 2, 3, 4, 5, 6, 7, 8, 9 10 11 12 13 14 15
         BUY_POWER = [0, 0, 1, 2, 2, 3, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5]
         MAX_B = 5
         b = BUY_POWER[player.money] # calc_money() must have been called at start of buy phase
+        return b
+
         s = player.calc_victory_points() - max(p.calc_victory_points() for p in game.players if p != player)
         if s < -13: s = -13
         elif s > 13: s = 13
@@ -477,26 +499,71 @@ class TemporalDifferenceStrategy(Strategy):
         last_a = self.last_a
         last_q[last_a] += alpha*(reward - last_q[last_a])
     def fmt_buys(self):
-        # Refomat into more useful but probably slower form
-        cbt = defaultdict(Counter)
-        for (turn,card), count in self.buy_counts_by_turn.items():
-            cbt[turn][card] = count
-
-        # Show every line for turns played
-        lines = ['']
-        for ii in range(len(cbt)):
-            sorted_buys = sorted(self.buys, key=lambda m: cbt[ii][m], reverse=True)
-            line = '   '.join(f"{cbt[ii][m]} {m}" for m in sorted_buys if cbt[ii][m] > 0)
-            if sum(cbt[ii].values()) > 0:
-                # avoid blank lines for sequences never played
-                lines.append(f'    {ii+1:2d}:   '+line)
-
-        sorted_buys = sorted(self.buys, key=lambda m: (getattr(m.card, 'cost', 0), self.buy_counts[m]), reverse=True)
-        line = '   '.join(f"{self.buy_counts[m]} {m}" for m in sorted_buys if self.buy_counts[m] > 0)
-        lines.append(f'    Sum   '+line)
+        lines = [ super().fmt_buys() ]
         lines.append(f'    Visited {len(self.q)} states')
         lines.append(f'    q = {dict(self.q)}')
+        return '\n'.join(lines)
 
+class MonteCarloStrategy(Strategy):
+    '''
+    Based on the incremental algorithm in Chapter 5.6 of Sutton & Barton,
+    "Reinforcement Learning: An Introduction", 2020
+    '''
+    def __init__(self):
+        super().__init__()
+        self.q = defaultdict(lambda: [0.5]*len(self.buys)) # {state_idx: [action_values]}
+        # Because our reward is 1 for a win and 0 for a loss,
+        # our action values are estimated probabilities of winning the game
+        # from the specified (state, action).
+        self.c = defaultdict(lambda: [0]*len(self.buys)) # {state_idx: [action_counts]}
+        self.sa_hist = [] # [(state,action)]
+    def state_idx(self, game, player):
+        # To start, learn a static strategy, regardless of game state:
+        # return 0
+        # With competent players, most games end within ~20 turns
+        t = min(game.turn, 29)
+        return t
+    def start_game(self):
+        self.last_s = None
+        # self.last_a = None
+        self.sa_hist.clear()
+    def accept_buy(self, buy, game, player):
+        super().accept_buy(buy, game, player)
+        # Convert current game state into an integer
+        # s = self.state_idx(game, player)
+        s = self.last_s # state could have changed due to us buying the card
+        a = self.buys.index(buy)
+        self.sa_hist.append((s, a))
+    def iter_buys(self, game, player):
+        self.last_s = s = self.state_idx(game, player)
+        # Lookup all action-values for current state
+        q = self.q[s]
+        # Use an epsilon-greedy policy; eps = 0.1 is common choice in the book.
+        if random.random() < eps:
+            # Sort the possible buys in random order
+            b = list(self.buys)
+            random.shuffle(b)
+        else:
+            # Follow the policy, sort actions by value
+            b = sorted_by(self.buys, q, reverse=True)
+        return b
+    def end_game(self, reward, game, player):
+        if self.last_s is None:
+            assert False, "Games shouldn't end with no moves taken"
+        q = self.q
+        c = self.c
+        G = reward
+        rev_hist = self.sa_hist[::-1]
+        for t, (s, a) in enumerate(rev_hist):
+            # First visit update rule - optional
+            if (s, a) in rev_hist[t+1:]:
+                continue
+            c[s][a] += 1
+            q[s][a] += (1 / c[s][a])*(G - q[s][a])
+    def fmt_buys(self):
+        lines = [ super().fmt_buys() ]
+        lines.append(f'    Visited {len(self.q)} states')
+        # lines.append(f'    q = {dict(self.q)}')
         return '\n'.join(lines)
 
 class Player:
@@ -709,14 +776,15 @@ def main_evol():
         strategies = evolve(strategies)
 
 # Not sure what the learning rate should be...
-alpha = 0.0001 # this seems to work pretty well
+alpha = 1e-5 # needs to be smaller the deeper the states go in TD
 eps = 0.1
 def main_rl():
     players = 2
     popsize = 4 # some multiple of 2, 3, and 4
-    strategies = [TemporalDifferenceStrategy() for _ in range(popsize)]
+    # strategies = [TemporalDifferenceStrategy() for _ in range(popsize)]
+    strategies = [MonteCarloStrategy() for _ in range(popsize)]
 
-    for cycle in range(1000): # expect to Ctrl-C to exit early
+    for cycle in range(100): # expect to Ctrl-C to exit early
         start = time.time()
         run_tournament(strategies, players)
         for strategy in strategies[:1]:
@@ -729,7 +797,8 @@ def main_rl():
         #         'weights': s.weights,
         #     } for s in strategies[:10]], f)
         # strategies = evolve(strategies)
-        global alpha, eps
+
+        # global alpha, eps
         # alpha *= 0.950 # shrink learning rate over 100 rounds
         # eps *= 0.950 # slowly anneal toward greedy over 100 rounds
         # alpha *= 0.995 # shrink learning rate over 1000 rounds
