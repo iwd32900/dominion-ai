@@ -406,12 +406,12 @@ class TemporalDifferenceStrategy(Strategy):
         # from the specified (state, action).
     def state_idx(self, game, player):
         # To start, learn a static strategy, regardless of game state:
-        return 0
+        # return 0
 
         # With competent players, most games end within ~20 turns
         MAX_T = 20
         t = min(game.turn, MAX_T)
-        return (t//4,)
+        return (game.turn//20,)
 
         # In the basic game, 5 Gold = $15 is the max in one hand
         # actual $   0, 1, 2, 3, 4, 5, 6, 7, 8, 9 10 11 12 13 14 15
@@ -495,7 +495,7 @@ class TemporalDifferenceStrategy(Strategy):
         line = '   '.join(f"{self.buy_counts[m]} {m}" for m in sorted_buys if self.buy_counts[m] > 0)
         lines.append(f'    Sum   '+line)
         lines.append(f'    Visited {len(self.q)} states')
-        lines.append(f'    q[0] = {self.q[0]}')
+        lines.append(f'    q = {dict(self.q)}')
 
         return '\n'.join(lines)
 
