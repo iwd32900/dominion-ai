@@ -411,7 +411,7 @@ class TemporalDifferenceStrategy(Strategy):
         # With competent players, most games end within ~20 turns
         MAX_T = 20
         t = min(game.turn, MAX_T)
-        return (game.turn//20,)
+        return (game.turn//10,)
 
         # In the basic game, 5 Gold = $15 is the max in one hand
         # actual $   0, 1, 2, 3, 4, 5, 6, 7, 8, 9 10 11 12 13 14 15
@@ -709,8 +709,8 @@ def main_evol():
         strategies = evolve(strategies)
 
 # Not sure what the learning rate should be...
-alpha = 0.001 # this seems to work pretty well
-eps = 0.01
+alpha = 0.0001 # this seems to work pretty well
+eps = 0.1
 def main_rl():
     players = 2
     popsize = 4 # some multiple of 2, 3, and 4
