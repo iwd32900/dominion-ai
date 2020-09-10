@@ -393,10 +393,10 @@ def dot(xs, ys):
 def sorted_by(target, keys, reverse=False):
     return [t for k, t in sorted(zip(keys, target), key=lambda x: x[0], reverse=reverse)]
 
-class ExpectedSarsaStrategy(Strategy):
+class TemporalDifferenceStrategy(Strategy):
     '''
-    Based on the "Expected Sarsa" algorithm in section 6.6
-    of Sutton & Barton, "Reinforcement Learning: An Introduction", 2020
+    Based on the algorithms in Chapter 6 of Sutton & Barton,
+    "Reinforcement Learning: An Introduction", 2020
     '''
     def __init__(self):
         super().__init__()
@@ -411,6 +411,8 @@ class ExpectedSarsaStrategy(Strategy):
         # With competent players, most games end within ~20 turns
         MAX_T = 20
         t = min(game.turn, MAX_T)
+        return (t//4,)
+
         # In the basic game, 5 Gold = $15 is the max in one hand
         # actual $   0, 1, 2, 3, 4, 5, 6, 7, 8, 9 10 11 12 13 14 15
         BUY_POWER = [0, 0, 1, 2, 2, 3, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5]
@@ -434,20 +436,27 @@ class ExpectedSarsaStrategy(Strategy):
         s = self.state_idx(game, player)
         # Lookup all action-values for current state
         q = self.q[s]
+        a = self.buys.index(buy)
         if self.last_s is not None:
             # and all action-values for previous state
             last_q = self.q[self.last_s]
+            # print("->"+str(last_q))
             last_a = self.last_a
-            # Use an epsilon-greedy policy; eps = 0.1 is common choice in the book.
-            pi = [eps/len(q)] * len(q)
-            pi[argmax(q)] += (1-eps)
             # Update the value of the last action taken
-            E_q = dot(pi, q)
-            assert 0 <= E_q <= 1
-            last_q[last_a] += alpha*(E_q - last_q[last_a])
+            # Sarsa:
+            last_q[last_a] += alpha*(q[a] - last_q[last_a])
+            # Q learning:
+            # last_q[last_a] += alpha*(max(q) - last_q[last_a])
+            # Expected Sarsa:
+            # Use an epsilon-greedy policy; eps = 0.1 is common choice in the book.
+            # pi = [eps/len(q)] * len(q)
+            # pi[argmax(q)] += (1-eps)
+            # E_q = dot(pi, q)
+            # last_q[last_a] += alpha*(E_q - last_q[last_a])
+            # print("<-"+str(last_q))
         # Save this move for next time
         self.last_s = s
-        self.last_a = self.buys.index(buy)
+        self.last_a = a
     def iter_buys(self, game, player):
         s = self.state_idx(game, player)
         # Lookup all action-values for current state
@@ -473,19 +482,20 @@ class ExpectedSarsaStrategy(Strategy):
         for (turn,card), count in self.buy_counts_by_turn.items():
             cbt[turn][card] = count
 
-        sorted_buys = sorted(self.buys, key=lambda m: (getattr(m.card, 'cost', 0), self.buy_counts[m]), reverse=True)
-
         # Show every line for turns played
         lines = ['']
         for ii in range(len(cbt)):
+            sorted_buys = sorted(self.buys, key=lambda m: cbt[ii][m], reverse=True)
             line = '   '.join(f"{cbt[ii][m]} {m}" for m in sorted_buys if cbt[ii][m] > 0)
             if sum(cbt[ii].values()) > 0:
                 # avoid blank lines for sequences never played
                 lines.append(f'    {ii+1:2d}:   '+line)
 
+        sorted_buys = sorted(self.buys, key=lambda m: (getattr(m.card, 'cost', 0), self.buy_counts[m]), reverse=True)
         line = '   '.join(f"{self.buy_counts[m]} {m}" for m in sorted_buys if self.buy_counts[m] > 0)
         lines.append(f'    Sum   '+line)
         lines.append(f'    Visited {len(self.q)} states')
+        lines.append(f'    q[0] = {self.q[0]}')
 
         return '\n'.join(lines)
 
@@ -627,7 +637,7 @@ def print_stockpile(stockpile):
     for card, count in stockpile.items():
         print(f"  {count} {card}")
 
-def run_tournament(strategies, players_per_game=3, games_per_strategy=50):
+def run_tournament(strategies, players_per_game=3, games_per_strategy=100):
     popsize = len(strategies)
     assert popsize % players_per_game == 0, "Popsize must be evenly divisible by number of players"
 
@@ -699,14 +709,14 @@ def main_evol():
         strategies = evolve(strategies)
 
 # Not sure what the learning rate should be...
-alpha = 0.1
-eps = 0.1
+alpha = 0.001 # this seems to work pretty well
+eps = 0.01
 def main_rl():
     players = 2
     popsize = 4 # some multiple of 2, 3, and 4
-    strategies = [ExpectedSarsaStrategy() for _ in range(popsize)]
+    strategies = [TemporalDifferenceStrategy() for _ in range(popsize)]
 
-    for cycle in range(100): # expect to Ctrl-C to exit early
+    for cycle in range(1000): # expect to Ctrl-C to exit early
         start = time.time()
         run_tournament(strategies, players)
         for strategy in strategies[:1]:
@@ -719,8 +729,10 @@ def main_rl():
         #         'weights': s.weights,
         #     } for s in strategies[:10]], f)
         # strategies = evolve(strategies)
-        global eps
+        global alpha, eps
+        # alpha *= 0.950 # shrink learning rate over 100 rounds
         # eps *= 0.950 # slowly anneal toward greedy over 100 rounds
+        # alpha *= 0.995 # shrink learning rate over 1000 rounds
         # eps *= 0.995 # slowly anneal toward greedy over 1000 rounds
 
 if __name__ == '__main__':
