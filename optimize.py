@@ -283,6 +283,7 @@ class Strategy:
     def reset(self):
         # Call once per tournament to reset statistics
         self.wins = 0
+        self.suicides = 0 # we caused game to end but we lost -- converted probable loss into certain loss
         self.fitness = 0
         self.act_counts.clear()
         self.buy_counts.clear()
@@ -521,8 +522,12 @@ class MonteCarloStrategy(Strategy):
         # To start, learn a static strategy, regardless of game state:
         # return 0
         # With competent players, most games end within ~20 turns
-        t = min(game.turn, 29)
-        return t
+        t = min(game.turn, 19)
+        s = player.calc_victory_points() - max(p.calc_victory_points() for p in game.players if p != player)
+        if s < -13: s = -13
+        elif s > 13: s = 13
+        p = min(game.stockpile[Province], 3) # [0,8] in the 2-player game
+        return (t,s,p)
     def start_game(self):
         self.last_s = None
         # self.last_a = None
@@ -619,7 +624,6 @@ class Player:
 
 class Game:
     def __init__(self, players, stockpile):
-        self.turn = 0
         self.players = list(players)
         self.stockpile = dict(stockpile)
         for player in players:
@@ -633,6 +637,8 @@ class Game:
             or len(exhausted_cards) >= 3
         )
     def run(self):
+        self.turn = 0
+        self.last_player = None
         game = self
         for player in game.players:
             player.strategy.start_game()
@@ -648,6 +654,8 @@ class Game:
             elif score == best:  reward = 0.5 # tie
             else: reward = 0 # loss
             player.strategy.wins += reward
+            if player == game.last_player and reward == 0:
+                player.strategy.suicides += 1
             player.strategy.game_lengths[player.turns_played] += 1
             player.strategy.end_game(reward, game, player)
     def run_loop(self):
@@ -660,7 +668,6 @@ class Game:
                     return
                 # print(f"  Player {player.name}    pts = {player.calc_victory_points()}")
                 # print(f"    hand = {', '.join(str(x) for x in player.hand)}")
-                player.turns_played += 1
                 while player.actions > 0:
                     for action in player.strategy.iter_actions(game, player):
                         # Inlining this check for speed (hopefully):
@@ -680,6 +687,8 @@ class Game:
                             player.strategy.accept_buy(buy, game, player)
                             break
                 player.draw_hand()
+                player.turns_played += 1
+                game.last_player = player
         # exits via premature return -- this line never reached unless game runs long!
 
 def get_starting_stockpile(num_players):
@@ -765,7 +774,7 @@ def main_evol():
         start = time.time()
         run_tournament(strategies, players)
         for strategy in strategies[:3]:
-            print(f"round {cycle}    wins {strategy.wins}    fitness {strategy.fitness}    game len {','.join(str(k) for k,v in strategy.game_lengths.most_common(3))}    {players} players    {time.time() - start:.2f} sec")
+            print(f"round {cycle}    wins {strategy.wins}    suicides {strategy.suicides}    fitness {strategy.fitness}    game len {','.join(str(k) for k,v in strategy.game_lengths.most_common(3))}    {players} players    {time.time() - start:.2f} sec")
             print(f"  actions: {strategy.fmt_actions()}")
             print(f"  buys:    {strategy.fmt_buys()}")
         print("")
@@ -784,11 +793,11 @@ def main_rl():
     # strategies = [TemporalDifferenceStrategy() for _ in range(popsize)]
     strategies = [MonteCarloStrategy() for _ in range(popsize)]
 
-    for cycle in range(100): # expect to Ctrl-C to exit early
+    for cycle in range(500): # expect to Ctrl-C to exit early
         start = time.time()
         run_tournament(strategies, players)
         for strategy in strategies[:1]:
-            print(f"round {cycle}    wins {strategy.wins}    fitness {strategy.fitness}    game len {','.join(str(k) for k,v in strategy.game_lengths.most_common(3))}    {players} players    {time.time() - start:.2f} sec")
+            print(f"round {cycle}    wins {strategy.wins}    suicides {strategy.suicides}    fitness {strategy.fitness}    game len {','.join(str(k) for k,v in strategy.game_lengths.most_common(3))}    {players} players    {time.time() - start:.2f} sec")
             print(f"  actions: {strategy.fmt_actions()}")
             print(f"  buys:    {strategy.fmt_buys()}")
         print("")
