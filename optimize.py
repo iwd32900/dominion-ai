@@ -518,6 +518,7 @@ class MonteCarloStrategy(Strategy):
         # from the specified (state, action).
         self.c = defaultdict(lambda: [0]*len(self.buys)) # {state_idx: [action_counts]}
         self.sa_hist = [] # [(state,action)]
+        self.learn = True # if False, do not update any of the strategies, and do not make exploratory moves
     def state_idx(self, game, player):
         # To start, learn a static strategy, regardless of game state:
         # return 0
@@ -544,7 +545,7 @@ class MonteCarloStrategy(Strategy):
         # Lookup all action-values for current state
         q = self.q[s]
         # Use an epsilon-greedy policy; eps = 0.1 is common choice in the book.
-        if random.random() < eps:
+        if random.random() < eps and self.learn:
             # Sort the possible buys in random order
             b = list(self.buys)
             random.shuffle(b)
@@ -553,6 +554,8 @@ class MonteCarloStrategy(Strategy):
             b = sorted_by(self.buys, q, reverse=True)
         return b
     def end_game(self, reward, game, player):
+        if not self.learn:
+            return # do not update statistics
         if self.last_s is None:
             assert False, "Games shouldn't end with no moves taken"
         q = self.q
@@ -812,6 +815,18 @@ def main_rl():
         # eps *= 0.950 # slowly anneal toward greedy over 100 rounds
         # alpha *= 0.995 # shrink learning rate over 1000 rounds
         # eps *= 0.995 # slowly anneal toward greedy over 1000 rounds
+
+    # Play final round without random exploratory moves
+    for strategy in strategies:
+        strategy.learn = False
+
+    start = time.time()
+    run_tournament(strategies, players)
+    for strategy in strategies[:1]:
+        print(f"round FINAL    wins {strategy.wins}    suicides {strategy.suicides}    fitness {strategy.fitness}    game len {','.join(str(k) for k,v in strategy.game_lengths.most_common(3))}    {players} players    {time.time() - start:.2f} sec")
+        print(f"  actions: {strategy.fmt_actions()}")
+        print(f"  buys:    {strategy.fmt_buys()}")
+    print("")
 
 if __name__ == '__main__':
     # main_evol()
