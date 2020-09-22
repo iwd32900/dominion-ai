@@ -1,6 +1,6 @@
 from collections import Counter, defaultdict
 import itertools
-import json
+import pickle
 import random
 import time
 
@@ -332,14 +332,18 @@ class Strategy:
 
         return '\n'.join(lines)
 
+# These would be lambdas, but lambdas don't pickle
+def zero(): return 0
+def normal_05(): return random.normalvariate(0, 0.05)
+
 class LinearRankStrategy(Strategy):
     def __init__(self, weights=None):
         super().__init__()
         self.weight_dist = []
         # A typical game lasts 10-20 turns.  With a coef of 0.05, a card can
         # go from 0 to 1 (or 1 to 0) over the course of a game.
-        # linear_coef = lambda: 0 # fixed-rank strategy
-        linear_coef = lambda: random.normalvariate(0, 0.05)
+        # linear_coef = zero # fixed-rank strategy
+        linear_coef = normal_05
         for move in (self.actions + self.buys):
             move.idx = len(self.weight_dist)
             self.weight_dist.append(random.random)
@@ -505,6 +509,14 @@ class TemporalDifferenceStrategy(Strategy):
         lines.append(f'    q = {dict(self.q)}')
         return '\n'.join(lines)
 
+# Used instead of lambdas to allow pickling
+class ConstArray:
+    def __init__(self, value, length):
+        self.value = value
+        self.length = length
+    def __call__(self):
+        return [self.value] * self.length
+
 class MonteCarloStrategy(Strategy):
     '''
     Based on the incremental algorithm in Chapter 5.6 of Sutton & Barton,
@@ -512,11 +524,11 @@ class MonteCarloStrategy(Strategy):
     '''
     def __init__(self):
         super().__init__()
-        self.q = defaultdict(lambda: [0.5]*len(self.buys)) # {state_idx: [action_values]}
+        self.q = defaultdict(ConstArray(0.5, len(self.buys))) # {state_idx: [action_values]}
         # Because our reward is 1 for a win and 0 for a loss,
         # our action values are estimated probabilities of winning the game
         # from the specified (state, action).
-        self.c = defaultdict(lambda: [0]*len(self.buys)) # {state_idx: [action_counts]}
+        self.c = defaultdict(ConstArray(0, len(self.buys))) # {state_idx: [action_counts]}
         self.sa_hist = [] # [(state,action)]
         self.learn = True # if False, do not update any of the strategies, and do not make exploratory moves
     def state_idx(self, game, player):
@@ -781,10 +793,8 @@ def main_evol():
             print(f"  actions: {strategy.fmt_actions()}")
             print(f"  buys:    {strategy.fmt_buys()}")
         print("")
-        with open("strategies.json", "w") as f:
-            json.dump([{
-                'weights': s.weights,
-            } for s in strategies[:10]], f)
+        with open("strategies.pkl", "wb") as f:
+            pickle.dump(strategies[:10], f)
         strategies = evolve(strategies)
 
 # Not sure what the learning rate should be...
@@ -796,7 +806,12 @@ def main_rl():
     # strategies = [TemporalDifferenceStrategy() for _ in range(popsize)]
     strategies = [MonteCarloStrategy() for _ in range(popsize)]
 
-    for cycle in range(500): # expect to Ctrl-C to exit early
+    CYCLES = 500
+    for cycle in range(CYCLES): # expect to Ctrl-C to exit early
+        if cycle == CYCLES-1: # last one
+            # Play final round without random exploratory moves
+            for strategy in strategies:
+                strategy.learn = False
         start = time.time()
         run_tournament(strategies, players)
         for strategy in strategies[:1]:
@@ -804,29 +819,14 @@ def main_rl():
             print(f"  actions: {strategy.fmt_actions()}")
             print(f"  buys:    {strategy.fmt_buys()}")
         print("")
-        # with open("strategies.json", "w") as f:
-        #     json.dump([{
-        #         'weights': s.weights,
-        #     } for s in strategies[:10]], f)
-        # strategies = evolve(strategies)
+        with open("strategies.pkl", "wb") as f:
+            pickle.dump(strategies, f)
 
         # global alpha, eps
         # alpha *= 0.950 # shrink learning rate over 100 rounds
         # eps *= 0.950 # slowly anneal toward greedy over 100 rounds
         # alpha *= 0.995 # shrink learning rate over 1000 rounds
         # eps *= 0.995 # slowly anneal toward greedy over 1000 rounds
-
-    # Play final round without random exploratory moves
-    for strategy in strategies:
-        strategy.learn = False
-
-    start = time.time()
-    run_tournament(strategies, players)
-    for strategy in strategies[:1]:
-        print(f"round FINAL    wins {strategy.wins}    suicides {strategy.suicides}    fitness {strategy.fitness}    game len {','.join(str(k) for k,v in strategy.game_lengths.most_common(3))}    {players} players    {time.time() - start:.2f} sec")
-        print(f"  actions: {strategy.fmt_actions()}")
-        print(f"  buys:    {strategy.fmt_buys()}")
-    print("")
 
 if __name__ == '__main__':
     # main_evol()
