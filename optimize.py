@@ -2,6 +2,7 @@ from collections import Counter, defaultdict
 import itertools
 import pickle
 import random
+import sys
 import time
 
 # random.seed(123456)
@@ -331,6 +332,15 @@ class Strategy:
         lines.append(f'    Sum   '+line)
 
         return '\n'.join(lines)
+    def __str__(self):
+        lens = ','.join(str(k) for k,v in self.game_lengths.most_common(3))
+        minlen = min(self.game_lengths.keys())
+        maxlen = max(self.game_lengths.keys())
+        return "\n".join([
+            f"{self.__class__.__name__}    wins {self.wins}    suicides {self.suicides}    fitness {self.fitness}    game len {lens} ({minlen} - {maxlen})",
+            f"  actions: {self.fmt_actions()}",
+            f"  buys:    {self.fmt_buys()}",
+        ])
 
 # These would be lambdas, but lambdas don't pickle
 def zero(): return 0
@@ -522,13 +532,15 @@ class MonteCarloStrategy(Strategy):
     Based on the incremental algorithm in Chapter 5.6 of Sutton & Barton,
     "Reinforcement Learning: An Introduction", 2020
     '''
-    def __init__(self):
+    def __init__(self, q={}, c={}):
         super().__init__()
         self.q = defaultdict(ConstArray(0.5, len(self.buys))) # {state_idx: [action_values]}
+        self.q.update(q)
         # Because our reward is 1 for a win and 0 for a loss,
         # our action values are estimated probabilities of winning the game
         # from the specified (state, action).
         self.c = defaultdict(ConstArray(0, len(self.buys))) # {state_idx: [action_counts]}
+        self.c.update(c)
         self.sa_hist = [] # [(state,action)]
         self.learn = True # if False, do not update any of the strategies, and do not make exploratory moves
     def state_idx(self, game, player):
@@ -579,6 +591,7 @@ class MonteCarloStrategy(Strategy):
             if (s, a) in rev_hist[t+1:]:
                 continue
             c[s][a] += 1
+            # c_sa = min(c[s][a], 100) # experiment: so learning doesn't get "stuck" on early experiences
             q[s][a] += (1 / c[s][a])*(G - q[s][a])
     def fmt_buys(self):
         lines = [ super().fmt_buys() ]
@@ -788,10 +801,9 @@ def main_evol():
     for cycle in range(100): # expect to Ctrl-C to exit early
         start = time.time()
         run_tournament(strategies, players)
+        print(f"round {cycle}    {players} players    {time.time() - start:.2f} sec " + ("="*70))
         for strategy in strategies[:3]:
-            print(f"round {cycle}    wins {strategy.wins}    suicides {strategy.suicides}    fitness {strategy.fitness}    game len {','.join(str(k) for k,v in strategy.game_lengths.most_common(3))}    {players} players    {time.time() - start:.2f} sec")
-            print(f"  actions: {strategy.fmt_actions()}")
-            print(f"  buys:    {strategy.fmt_buys()}")
+            print(strategy)
         print("")
         with open("strategies.pkl", "wb") as f:
             pickle.dump(strategies[:10], f)
@@ -806,18 +818,17 @@ def main_rl():
     # strategies = [TemporalDifferenceStrategy() for _ in range(popsize)]
     strategies = [MonteCarloStrategy() for _ in range(popsize)]
 
-    CYCLES = 500
+    CYCLES = 5000
     for cycle in range(CYCLES): # expect to Ctrl-C to exit early
         if cycle == CYCLES-1: # last one
             # Play final round without random exploratory moves
             for strategy in strategies:
                 strategy.learn = False
         start = time.time()
-        run_tournament(strategies, players)
+        run_tournament(strategies, players, games_per_strategy=1000)
+        print(f"round {cycle}    {players} players    {time.time() - start:.2f} sec " + ("="*70))
         for strategy in strategies[:1]:
-            print(f"round {cycle}    wins {strategy.wins}    suicides {strategy.suicides}    fitness {strategy.fitness}    game len {','.join(str(k) for k,v in strategy.game_lengths.most_common(3))}    {players} players    {time.time() - start:.2f} sec")
-            print(f"  actions: {strategy.fmt_actions()}")
-            print(f"  buys:    {strategy.fmt_buys()}")
+            print(strategy)
         print("")
         with open("strategies.pkl", "wb") as f:
             pickle.dump(strategies, f)
@@ -828,7 +839,36 @@ def main_rl():
         # alpha *= 0.995 # shrink learning rate over 1000 rounds
         # eps *= 0.995 # slowly anneal toward greedy over 1000 rounds
 
+def main_faceoff():
+    players = 2
+    strategies = []
+    for fname in sys.argv[1:]:
+        with open(fname, "rb") as f:
+            strategy = pickle.load(f)[0]
+            if isinstance(strategy, LinearRankStrategy):
+                strategies.append( LinearRankStrategy(weights=strategy.weights) )
+            elif isinstance(strategy, MonteCarloStrategy):
+                s = MonteCarloStrategy(q=strategy.q, c=strategy.c)
+                s.learn = True
+                strategies.append(s)
+            else:
+                assert False, "Unsupported type of strategy"
+
+    CYCLES = 1
+    for cycle in range(CYCLES): # expect to Ctrl-C to exit early
+        if cycle == CYCLES-1: # last one
+            # Play final round without random exploratory moves
+            for strategy in strategies:
+                strategy.learn = False
+        start = time.time()
+        run_tournament(strategies, players, games_per_strategy=1000)
+        print(f"round {cycle}    {players} players    {time.time() - start:.2f} sec " + ("="*70))
+        for strategy in strategies:
+            print(strategy)
+        print("")
+
 if __name__ == '__main__':
     # main_evol()
-    main_rl()
+    # main_rl()
+    main_faceoff()
 
