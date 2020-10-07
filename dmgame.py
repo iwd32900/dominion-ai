@@ -204,6 +204,8 @@ class Game:
                             buy.do_move(game, player)
                             player.strategy.accept_buy(buy, game, player)
                             break
+                    else:
+                        break # no buyable cards
                 player.draw_hand()
                 player.turns_played += 1
                 game.last_player = player

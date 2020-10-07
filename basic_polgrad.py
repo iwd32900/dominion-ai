@@ -37,19 +37,21 @@ class BasicPolicyGradientStrategy(Strategy):
         super().reset()
         self.state_hist = [] # [tensor(float32)]
         self.action_hist = [] # [int]
+        self.logp_a_hist = [] # float
         self.rewards_to_go = [] # [float]
     # make function to compute action distribution
     # e.g. obs = torch.tensor([1, 2, 3], dtype=torch.float)
-    def get_policy(self, obs):
+    def get_policy(self, obs, invalid_act=None):
         logits = self.logits_net(obs)
+        if invalid_act is not None:
+            logits[invalid_act] = -np.inf
         return Categorical(logits=logits)
     # make loss function whose gradient, for the right data, is policy gradient
     def compute_loss(self):
-        #obs     = torch.as_tensor(self.state_hist, dtype=torch.float32)
         obs     = torch.stack(self.state_hist)
         act     = torch.as_tensor(self.action_hist, dtype=torch.int32)
+        logp    = torch.stack(self.logp_a_hist)
         weights = torch.as_tensor(self.rewards_to_go, dtype=torch.float32)
-        logp = self.get_policy(obs).log_prob(act)
         return -(logp * weights).mean()
     def state_idx(self, game, player):
         # To start, learn a static strategy, regardless of game state:
@@ -64,6 +66,7 @@ class BasicPolicyGradientStrategy(Strategy):
         return torch.as_tensor([t/20, s/13, p/3], dtype=torch.float)
     def start_game(self):
         self.last_s = None
+        self.last_logp = None
         self.episode_rewards = []
     def accept_buy(self, buy, game, player):
         super().accept_buy(buy, game, player)
@@ -73,20 +76,26 @@ class BasicPolicyGradientStrategy(Strategy):
         a = self.buys.index(buy)
         self.state_hist.append(s)
         self.action_hist.append(a)
-        self.episode_rewards.append(0)
+        self.logp_a_hist.append(self.last_logp)
+        rew = 0
+        # rew = buy.card.victory_points/100 if buy.card else 0
+        self.episode_rewards.append(rew)
     def iter_buys(self, game, player):
         self.last_s = s = self.state_idx(game, player)
-        #return self.get_policy(obs).sample().item()
-        probs = self.get_policy(s).probs.detach() # don't want gradient here
-        # Neat trick:  https://softwareengineering.stackexchange.com/questions/233541/how-to-implement-a-weighted-shuffle
-        # We've dropped the negative sign here so that high-prob items will sort to the front.
-        w = np.random.random(probs.shape) ** (1 / probs).numpy()
-        sorted_buys = sorted_by(self.buys, w, reverse=False)
-        return sorted_buys
+        invalid_act = np.array([not b.can_move(game, player) for b in self.buys])
+        # with torch.no_grad():
+        # MUST have gradient here -- must preserve it through the logp for backprop
+        pi = self.get_policy(s, invalid_act)
+        buy_idx = pi.sample()
+        self.last_logp = pi.log_prob(buy_idx)
+        return [ self.buys[buy_idx.item()] ]
     def end_game(self, reward, game, player):
         if self.last_s is None:
             assert False, "Games shouldn't end with no moves taken"
-        self.rewards_to_go.extend([reward] * len(self.episode_rewards))
+        # Cumulative sum in reverse direction -- works because we're not discounting
+        rtg = np.array(self.episode_rewards)[::-1].cumsum()[::-1] + reward
+        # self.rewards_to_go.extend([reward] * len(self.episode_rewards))
+        self.rewards_to_go.extend(rtg)
         assert len(self.rewards_to_go) == len(self.state_hist) == len(self.action_hist)
     def step(self):
         if not self.learn:
