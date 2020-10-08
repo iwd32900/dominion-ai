@@ -37,7 +37,7 @@ class BasicPolicyGradientStrategy(Strategy):
         super().reset()
         self.state_hist = [] # [tensor(float32)]
         self.action_hist = [] # [int]
-        self.logp_a_hist = [] # float
+        self.logp_a_hist = [] # [tensor(float32)]
         self.rewards_to_go = [] # [float]
     # make function to compute action distribution
     # e.g. obs = torch.tensor([1, 2, 3], dtype=torch.float)
@@ -48,8 +48,8 @@ class BasicPolicyGradientStrategy(Strategy):
         return Categorical(logits=logits)
     # make loss function whose gradient, for the right data, is policy gradient
     def compute_loss(self):
-        obs     = torch.stack(self.state_hist)
-        act     = torch.as_tensor(self.action_hist, dtype=torch.int32)
+        # obs     = torch.stack(self.state_hist)
+        # act     = torch.as_tensor(self.action_hist, dtype=torch.int32)
         logp    = torch.stack(self.logp_a_hist)
         weights = torch.as_tensor(self.rewards_to_go, dtype=torch.float32)
         return -(logp * weights).mean()
@@ -112,15 +112,17 @@ def main_basic_polygrad():
     popsize = players # some multiple of 2, 3, and 4
     strategies = [BasicPolicyGradientStrategy() for _ in range(popsize)]
 
-    CYCLES = 500
+    CYCLES = 50
+    GPS = 200
     for cycle in range(CYCLES): # expect to Ctrl-C to exit early
         if cycle == CYCLES-1: # last one
+            GPS = 2000
             # Play final round without random exploratory moves
             for strategy in strategies:
                 strategy.learn = False
         start = time.time()
         # Might need additional games:  starting code uses batch of 5000 moves...
-        run_tournament(strategies, players, games_per_strategy=200)
+        run_tournament(strategies, players, games_per_strategy=GPS)
 
         print(f"round {cycle}    {players} players    {time.time() - start:.2f} sec " + ("="*70))
         for strategy in strategies:
