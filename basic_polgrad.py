@@ -28,7 +28,7 @@ class BasicPolicyGradientStrategy(Strategy):
         super().__init__()
         lr = 1e-2
         if logits_net is None:
-            obs_dim = 3 # depends on impl. of self.state_idx()
+            obs_dim = 20+26+4 # depends on impl. of self.state_idx()
             n_acts = len(self.buys)
             hidden_sizes = [32]
             self.logits_net = mlp(sizes=[obs_dim]+hidden_sizes+[n_acts])
@@ -44,10 +44,9 @@ class BasicPolicyGradientStrategy(Strategy):
         self.rewards_to_go = [] # [float]
     # make function to compute action distribution
     # e.g. obs = torch.tensor([1, 2, 3], dtype=torch.float)
-    def get_policy(self, obs, invalid_act=None):
+    def get_policy(self, obs, invalid_act):
         logits = self.logits_net(obs)
-        if invalid_act is not None:
-            logits[invalid_act] = -np.inf
+        logits[invalid_act] = -np.inf
         return Categorical(logits=logits)
     # make loss function whose gradient, for the right data, is policy gradient
     def compute_loss(self):
@@ -66,35 +65,34 @@ class BasicPolicyGradientStrategy(Strategy):
         elif s > 13: s = 13
         p = min(game.stockpile[Province], 3) # [0,8] in the 2-player game
         # I've read that as a general rule, inputs should be on [-1,1]-ish
-        return torch.as_tensor([t/20, s/13, p/3], dtype=torch.float)
+        # return torch.as_tensor([t/20, s/13, p/3], dtype=torch.float)
+        obs = torch.zeros(20+26+4, dtype=torch.float)
+        obs[0:t] = 1
+        if s < 0:
+            obs[20:20+(-s)] = 1
+        elif s > 0:
+            obs[33:33+s] = 1
+        obs[46:46+p] = 1
+        return obs
     def start_game(self):
-        self.last_s = None
-        self.last_logp = None
         self.episode_rewards = []
-    def accept_buy(self, buy, game, player):
-        super().accept_buy(buy, game, player)
-        # Convert current game state into an integer
-        # s = self.state_idx(game, player)
-        s = self.last_s # state could have changed due to us buying the card
-        a = self.buys.index(buy)
-        self.state_hist.append(s)
-        self.action_hist.append(a)
-        self.logp_a_hist.append(self.last_logp)
-        rew = 0
-        # rew = buy.card.victory_points/100 if buy.card else 0
-        self.episode_rewards.append(rew)
     def iter_buys(self, game, player):
-        self.last_s = s = self.state_idx(game, player)
+        s = self.state_idx(game, player)
         invalid_act = np.array([not b.can_move(game, player) for b in self.buys])
         # with torch.no_grad():
         # MUST have gradient here -- must preserve it through the logp for backprop
         pi = self.get_policy(s, invalid_act)
         buy_idx = pi.sample()
-        self.last_logp = pi.log_prob(buy_idx)
-        return [ self.buys[buy_idx.item()] ]
+        buy = self.buys[buy_idx.item()]
+        logp = pi.log_prob(buy_idx)
+        self.state_hist.append(s)
+        self.action_hist.append(buy_idx)
+        self.logp_a_hist.append(logp)
+        rew = 0
+        # rew = buy.card.victory_points/100 if buy.card else 0
+        self.episode_rewards.append(rew)
+        return [ buy ]
     def end_game(self, reward, game, player):
-        if self.last_s is None:
-            assert False, "Games shouldn't end with no moves taken"
         # Cumulative sum in reverse direction -- works because we're not discounting
         rtg = np.array(self.episode_rewards)[::-1].cumsum()[::-1] + reward
         # self.rewards_to_go.extend([reward] * len(self.episode_rewards))
@@ -115,7 +113,7 @@ def main_basic_polygrad():
     popsize = players # some multiple of 2, 3, and 4
     strategies = [BasicPolicyGradientStrategy() for _ in range(popsize)]
 
-    CYCLES = 50
+    CYCLES = 150
     GPS = 200
     for cycle in range(CYCLES): # expect to Ctrl-C to exit early
         if cycle == CYCLES-1: # last one
