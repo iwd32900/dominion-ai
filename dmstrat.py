@@ -66,7 +66,7 @@ class Strategy:
                 lines.append(f'    {ii+1:2d}:   '+line)
 
         sorted_buys = sorted(self.buys, key=lambda m: (getattr(m.card, 'cost', 0), self.buy_counts[m]), reverse=True)
-        n = sum(self.game_lengths.values())
+        n = sum(self.game_lengths.values()) # number of games played
         line = '   '.join(f"{self.buy_counts[m]/n:.1f} {m}" for m in sorted_buys if self.buy_counts[m] > 0)
         lines.append(f'    Avg   '+line)
 

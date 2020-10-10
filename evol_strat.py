@@ -73,8 +73,9 @@ class LinearRankStrategy(Strategy):
                 # avoid blank lines for sequences never played
                 lines.append(f'    {ii+1:2d}:   '+line)
 
-        line = '   '.join(f"{self.buy_counts[m]} {m} ({self.weights[m.idx+1]:.3f})" for m in self.sorted_buys[0] if self.buy_counts[m] > 0)
-        lines.append(f'    Sum   '+line)
+        n = sum(self.game_lengths.values()) # number of games played
+        line = '   '.join(f"{self.buy_counts[m]/n:.1f} {m} ({self.weights[m.idx+1]:.3f})" for m in self.sorted_buys[0] if self.buy_counts[m] > 0)
+        lines.append(f'    Avg   '+line)
 
         return '\n'.join(lines)
 

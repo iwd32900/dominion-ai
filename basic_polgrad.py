@@ -24,13 +24,16 @@ class BasicPolicyGradientStrategy(Strategy):
     Very simple policy gradient algorithm based on
     https://github.com/openai/spinningup/blob/master/spinup/examples/pytorch/pg_math/2_rtg_pg.py
     '''
-    def __init__(self):
+    def __init__(self, logits_net=None):
         super().__init__()
-        hidden_sizes = [32]
         lr = 1e-2
-        obs_dim = 3 # depends on impl. of self.state_idx()
-        n_acts = len(self.buys)
-        self.logits_net = mlp(sizes=[obs_dim]+hidden_sizes+[n_acts])
+        if logits_net is None:
+            obs_dim = 3 # depends on impl. of self.state_idx()
+            n_acts = len(self.buys)
+            hidden_sizes = [32]
+            self.logits_net = mlp(sizes=[obs_dim]+hidden_sizes+[n_acts])
+        else:
+            self.logits_net = logits_net
         self.optimizer = Adam(self.logits_net.parameters(), lr=lr)
         self.learn = True # if False, do not update any of the strategies, and do not make exploratory moves
     def reset(self):

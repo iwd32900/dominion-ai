@@ -6,6 +6,7 @@ import time
 from dmstrat import *
 from evol_strat import *
 from rl_strat import *
+from basic_polgrad import *
 
 # random.seed(123456)
 
@@ -19,7 +20,9 @@ def main_faceoff():
                 strategies.append( LinearRankStrategy(weights=strategy.weights) )
             elif isinstance(strategy, MonteCarloStrategy):
                 s = MonteCarloStrategy(q=strategy.q, c=strategy.c)
-                s.learn = True
+                strategies.append(s)
+            elif isinstance(strategy, BasicPolicyGradientStrategy):
+                s = BasicPolicyGradientStrategy(logits_net=strategy.logits_net)
                 strategies.append(s)
             else:
                 assert False, "Unsupported type of strategy"
