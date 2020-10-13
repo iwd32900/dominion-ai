@@ -7,6 +7,7 @@ from dmstrat import *
 from evol_strat import *
 from rl_strat import *
 from basic_polgrad import *
+from ppo_strat import *
 
 # random.seed(123456)
 
@@ -24,6 +25,9 @@ def main_faceoff():
             elif isinstance(strategy, BasicPolicyGradientStrategy):
                 s = BasicPolicyGradientStrategy(logits_net=strategy.logits_net)
                 strategies.append(s)
+            elif isinstance(strategy, PPOStrategy):
+                s = PPOStrategy(ac=strategy.actor_critic)
+                strategies.append(s)
             else:
                 assert False, "Unsupported type of strategy"
 
@@ -34,7 +38,7 @@ def main_faceoff():
             for strategy in strategies:
                 strategy.learn = False
         start = time.time()
-        run_tournament(strategies, players, games_per_strategy=1000)
+        run_tournament(strategies, players, games_per_strategy=10000)
         print(f"round {cycle}    {players} players    {time.time() - start:.2f} sec " + ("="*70))
         for strategy in strategies:
             print(strategy)

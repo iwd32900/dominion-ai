@@ -4,6 +4,7 @@ Derived from https://github.com/openai/spinningup/tree/master/spinup/algos/pytor
 - MPI functionality commented out
 - Dependence on `gym` removed
 - PPO optimizer becomes a class that is fed buffer of data at each step
+- Must supply boolean mask of "forbidden" actions when sampling
 """
 import time
 
@@ -59,17 +60,17 @@ def discount_cumsum(x, discount):
 
 class Actor(nn.Module):
 
-    def _distribution(self, obs):
+    def _distribution(self, obs, fbn):
         raise NotImplementedError
 
     def _log_prob_from_distribution(self, pi, act):
         raise NotImplementedError
 
-    def forward(self, obs, act=None):
+    def forward(self, obs, fbn, act=None):
         # Produce action distributions for given observations, and
         # optionally compute the log likelihood of given actions under
         # those distributions.
-        pi = self._distribution(obs)
+        pi = self._distribution(obs, fbn)
         logp_a = None
         if act is not None:
             logp_a = self._log_prob_from_distribution(pi, act)
@@ -81,8 +82,10 @@ class MLPCategoricalActor(Actor):
         super().__init__()
         self.logits_net = mlp([obs_dim] + list(hidden_sizes) + [act_dim], activation)
 
-    def _distribution(self, obs):
+    def _distribution(self, obs, fbn):
         logits = self.logits_net(obs)
+        fbn = torch.as_tensor(fbn, dtype=torch.bool)
+        logits[fbn] = -np.inf # mask out forbidden (disallowed) actions
         return Categorical(logits=logits)
 
     def _log_prob_from_distribution(self, pi, act):
@@ -133,17 +136,16 @@ class MLPActorCritic(nn.Module):
         # build value function
         self.v  = MLPCritic(obs_dim, hidden_sizes, activation)
 
-    ### These are not needed since we fill our own buffer, but are good reference code:
-    # def step(self, obs):
-    #     with torch.no_grad():
-    #         pi = self.pi._distribution(obs)
-    #         a = pi.sample()
-    #         logp_a = self.pi._log_prob_from_distribution(pi, a)
-    #         v = self.v(obs)
-    #     return a.numpy(), v.numpy(), logp_a.numpy()
+    def step(self, obs, fbn):
+        with torch.no_grad():
+            pi = self.pi._distribution(obs, fbn)
+            a = pi.sample()
+            logp_a = self.pi._log_prob_from_distribution(pi, a)
+            v = self.v(obs)
+        return a.numpy(), v.numpy(), logp_a.numpy()
 
-    # def act(self, obs):
-    #     return self.step(obs)[0]
+    def act(self, obs):
+        return self.step(obs)[0]
 
 
 
@@ -152,25 +154,31 @@ class PPOBuffer:
     A buffer for storing trajectories experienced by a PPO agent interacting
     with the environment, and using Generalized Advantage Estimation (GAE-Lambda)
     for calculating the advantages of state-action pairs.
+
+    For categoricals, action is a scalar (act_dim = None),
+    while fbn_dim = the number of possible actions
     """
 
-    def __init__(self, obs_dim, act_dim, size, gamma=0.99, lam=0.95):
-        self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
-        self.act_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
-        self.adv_buf = np.zeros(size, dtype=np.float32)
-        self.rew_buf = np.zeros(size, dtype=np.float32)
-        self.ret_buf = np.zeros(size, dtype=np.float32)
-        self.val_buf = np.zeros(size, dtype=np.float32)
-        self.logp_buf = np.zeros(size, dtype=np.float32)
+    def __init__(self, obs_dim, fbn_dim, act_dim, size, gamma=0.99, lam=0.95):
+        self.obs_buf = np.zeros(combined_shape(size, obs_dim), dtype=np.float32) # Observation (state)
+        # the Forbidden mask -- set to True where actions are disallowed at that moment
+        self.fbn_buf = np.zeros(combined_shape(size, fbn_dim), dtype=np.bool8)
+        self.act_buf = np.zeros(combined_shape(size, act_dim), dtype=np.float32) # Action
+        self.adv_buf = np.zeros(size, dtype=np.float32) # Advantage (of action in state)
+        self.rew_buf = np.zeros(size, dtype=np.float32) # Reward (one-step)
+        self.ret_buf = np.zeros(size, dtype=np.float32) # Return (discounted cumulative future rewards)
+        self.val_buf = np.zeros(size, dtype=np.float32) # Value (of state)
+        self.logp_buf = np.zeros(size, dtype=np.float32) # log-probability of selected action
         self.gamma, self.lam = gamma, lam
         self.ptr, self.path_start_idx, self.max_size = 0, 0, size
 
-    def store(self, obs, act, rew, val, logp):
+    def store(self, obs, fbn, act, rew, val, logp):
         """
         Append one timestep of agent-environment interaction to the buffer.
         """
         assert self.ptr < self.max_size     # buffer has to have room so you can store
         self.obs_buf[self.ptr] = obs
+        self.fbn_buf[self.ptr] = fbn
         self.act_buf[self.ptr] = act
         self.rew_buf[self.ptr] = rew
         self.val_buf[self.ptr] = val
@@ -199,12 +207,15 @@ class PPOBuffer:
 
         # the next two lines implement GAE-Lambda advantage calculation
         deltas = rews[:-1] + self.gamma * vals[1:] - vals[:-1]
-        self.adv_buf[path_slice] = core.discount_cumsum(deltas, self.gamma * self.lam)
+        self.adv_buf[path_slice] = discount_cumsum(deltas, self.gamma * self.lam)
 
         # the next line computes rewards-to-go, to be targets for the value function
-        self.ret_buf[path_slice] = core.discount_cumsum(rews, self.gamma)[:-1]
+        self.ret_buf[path_slice] = discount_cumsum(rews, self.gamma)[:-1]
 
         self.path_start_idx = self.ptr
+
+    def reset(self):
+        self.ptr, self.path_start_idx = 0, 0
 
     def get(self):
         """
@@ -212,15 +223,24 @@ class PPOBuffer:
         the buffer, with advantages appropriately normalized (shifted to have
         mean zero and std one). Also, resets some pointers in the buffer.
         """
-        assert self.ptr == self.max_size    # buffer has to be full before you can get
-        self.ptr, self.path_start_idx = 0, 0
+        # assert self.ptr == self.max_size    # buffer has to be full before you can get
+        assert 1 <= self.ptr < self.max_size # we will return a slice
+        used = slice(0, self.ptr)
+        # self.ptr, self.path_start_idx = 0, 0
+        self.reset()
         # the next two lines implement the advantage normalization trick
         # adv_mean, adv_std = mpi_statistics_scalar(self.adv_buf)
         adv_mean, adv_std = self.adv_buf.mean(), self.adv_buf.std()
         self.adv_buf = (self.adv_buf - adv_mean) / adv_std
-        data = dict(obs=self.obs_buf, act=self.act_buf, ret=self.ret_buf,
-                    adv=self.adv_buf, logp=self.logp_buf)
-        return {k: torch.as_tensor(v, dtype=torch.float32) for k,v in data.items()}
+        data = dict(
+            obs=torch.as_tensor(self.obs_buf[used, ...], dtype=torch.float32),
+            fbn=torch.as_tensor(self.fbn_buf[used, ...], dtype=torch.bool),
+            act=torch.as_tensor(self.act_buf[used, ...], dtype=torch.float32),
+            ret=torch.as_tensor(self.ret_buf[used],      dtype=torch.float32),
+            adv=torch.as_tensor(self.adv_buf[used],      dtype=torch.float32),
+            logp=torch.as_tensor(self.logp_buf[used],    dtype=torch.float32),
+            )
+        return data
 
 
 class PPOAlgo:
@@ -381,10 +401,10 @@ class PPOAlgo:
 
         # Set up function for computing PPO policy loss
         def compute_loss_pi(data):
-            obs, act, adv, logp_old = data['obs'], data['act'], data['adv'], data['logp']
+            obs, fbn, act, adv, logp_old = data['obs'], data['fbn'], data['act'], data['adv'], data['logp']
 
             # Policy loss
-            pi, logp = self.ac.pi(obs, act)
+            pi, logp = self.ac.pi(obs, fbn, act)
             ratio = torch.exp(logp - logp_old)
             clip_adv = torch.clamp(ratio, 1-self.clip_ratio, 1+self.clip_ratio) * adv
             loss_pi = -(torch.min(ratio * adv, clip_adv)).mean()
@@ -410,28 +430,28 @@ class PPOAlgo:
         v_l_old = compute_loss_v(data).item()
 
         # Train policy with multiple steps of gradient descent
-        for i in range(train_pi_iters):
-            pi_optimizer.zero_grad()
+        for i in range(self.train_pi_iters):
+            self.pi_optimizer.zero_grad()
             loss_pi, pi_info = compute_loss_pi(data)
             # kl = mpi_avg(pi_info['kl'])
-            kl = pi_info['kl'].sum() # mpi_avg() is the sum, averaged over processors
-            if kl > 1.5 * target_kl:
+            kl = pi_info['kl'] # mpi_avg() is the average over processors
+            if kl > 1.5 * self.target_kl:
                 # logger.log('Early stopping at step %d due to reaching max kl.'%i)
                 print('Early stopping at step %d due to reaching max kl.'%i)
                 break
             loss_pi.backward()
             # mpi_avg_grads(ac.pi)    # average grads across MPI processes
-            pi_optimizer.step()
+            self.pi_optimizer.step()
 
         # logger.store(StopIter=i)
 
         # Value function learning
-        for i in range(train_v_iters):
-            vf_optimizer.zero_grad()
+        for i in range(self.train_v_iters):
+            self.vf_optimizer.zero_grad()
             loss_v = compute_loss_v(data)
             loss_v.backward()
             # mpi_avg_grads(ac.v)    # average grads across MPI processes
-            vf_optimizer.step()
+            self.vf_optimizer.step()
 
         # # Log changes from update
         # kl, ent, cf = pi_info['kl'], pi_info_old['ent'], pi_info['cf']
