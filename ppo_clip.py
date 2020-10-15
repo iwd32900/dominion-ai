@@ -346,7 +346,7 @@ class PPOAlgo:
             the current policy and value function.
 
     """
-    def __init__(self, actor_critic, seed=0,
+    def __init__(self, actor_critic, # seed=0,
         # gamma=0.99, lam=0.97,
         clip_ratio=0.2, pi_lr=3e-4, vf_lr=1e-3,
         train_pi_iters=80, train_v_iters=80,
@@ -366,8 +366,8 @@ class PPOAlgo:
 
         # Random seed
         # seed += 10000 * proc_id()
-        torch.manual_seed(seed)
-        np.random.seed(seed)
+        # torch.manual_seed(seed)
+        # np.random.seed(seed)
 
         # Instantiate environment
         # env = env_fn()

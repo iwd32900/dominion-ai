@@ -14,20 +14,54 @@ class Card:
     def __init__(self, name, **kwargs):
         self.name = name
         self.__dict__.update(kwargs)
+    def can_buy(self, game, player):
+        return (
+            self.cost <= player.money
+            # and player.buys >= 1 # already checked in outer loop
+            and game.stockpile[self] >= 1
+        )
+    def buy(self, game, player):
+        player.money -= self.cost
+        player.buys -= 1
+        player.discard.append(self)
+        game.stockpile[self] -= 1
+    def can_play(self, game, player):
+        return (
+            self in player.hand
+            # and player.actions >= 1 # already checked in outer loop
+            # and self.is_action # already checked by strategy
+        )
     def play(self, game, player):
+        # This order is important: while playing, a card is neither part of the hand, nor the discards
+        player.hand.remove(self)
+        player.actions -= 1
         # money is handled separately
         player.actions += self.actions_when_played
         player.buys += self.buys_when_played
         if self.cards_when_played:
             player.draw_cards(self.cards_when_played)
+        self._play(game, player)
+        player.played.append(self)
+    def _play(self, game, player):
+        pass
     def __repr__(self):
         return self.name
+
+class EndCard(Card):
+    def can_buy(self, game, player):
+        return True
+    def buy(self, game, player):
+        player.buys = 0
+    def can_play(self, game, player):
+        return True
+    def play(self, game, player):
+        player.actions = 0
+END = EndCard("END")
 
 class WitchCard(Card):
     def __init__(self):
         super().__init__("Witch", cost=5, is_action=True, cards_when_played=2)
-    def play(self, game, attacker):
-        super().play(game, attacker)
+    def _play(self, game, attacker):
         for defender in game.players:
             if defender == attacker or game.stockpile[Curse] < 1 or (Moat in defender.hand):
                 continue
@@ -37,8 +71,7 @@ class WitchCard(Card):
 class AdventurerCard(Card):
     def __init__(self):
         super().__init__("Adventurer", cost=6, is_action=True)
-    def play(self, game, player):
-        super().play(game, player)
+    def _play(self, game, player):
         treasures = 0
         # After 50 tries, we assume there are no more treasures in the deck!
         for _ in range(50):
@@ -55,8 +88,7 @@ class AdventurerCard(Card):
 class BureaucratCard(Card):
     def __init__(self):
         super().__init__("Bureaucrat", cost=4, is_action=True)
-    def play(self, game, attacker):
-        super().play(game, attacker)
+    def _play(self, game, attacker):
         if game.stockpile[Silver] >= 1:
             attacker.deck.append(Silver)
             game.stockpile[Silver] -= 1
@@ -71,8 +103,7 @@ class BureaucratCard(Card):
 class ChancellorCard(Card):
     def __init__(self):
         super().__init__("Chancellor", cost=3, is_action=True, money_when_played=2)
-    def play(self, game, player):
-        super().play(game, player)
+    def _play(self, game, player):
         if len(player.deck) == 0 or len(player.discard) == 0:
             return # action has no effect, avoid divide-by-zero
         # Heuristic:  if there's a higher fraction of useless cards in the deck, then reshuffle
@@ -85,8 +116,7 @@ class ChancellorCard(Card):
 class CouncilRoomCard(Card):
     def __init__(self):
         super().__init__("Council_Room", cost=5, is_action=True, buys_when_played=1, cards_when_played=4)
-    def play(self, game, attacker):
-        super().play(game, attacker)
+    def _play(self, game, attacker):
         for defender in game.players:
             if defender == attacker: # not really an attack
                 continue
@@ -95,8 +125,7 @@ class CouncilRoomCard(Card):
 class MineCard(Card):
     def __init__(self):
         super().__init__("Mine", cost=5, is_action=True)
-    def play(self, game, player):
-        super().play(game, player)
+    def _play(self, game, player):
         if Silver in player.hand and game.stockpile[Gold] >= 1:
             player.hand.remove(Silver) # trashed - lost from game
             player.hand.append(Gold)
@@ -113,8 +142,7 @@ class MoatCard(Card):
 class ThiefCard(Card):
     def __init__(self):
         super().__init__("Thief", cost=4, is_action=True)
-    def play(self, game, attacker):
-        super().play(game, attacker)
+    def _play(self, game, attacker):
         for defender in game.players:
             if defender == attacker or (Moat in defender.hand):
                 continue

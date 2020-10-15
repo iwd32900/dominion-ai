@@ -15,9 +15,9 @@ class Strategy:
         self.buy_counts_by_turn = Counter() # {(turn, Card): int}
         self.game_lengths = Counter() # {int: int}
         # Makes no sense to leave playable actions in the hand, if you bought them, so:
-        self.actions = [PlayCard(c) for c in ALL_CARDS if c.is_action] #+ [EndActions()]
+        self.actions = [c for c in ALL_CARDS if c.is_action] #+ [END]
         # EndBuy is important:  allows us to declare some cards have negative value to us and should not be bought
-        self.buys = [BuyCard(c) for c in ALL_CARDS] + [EndBuy()]
+        self.buys = [c for c in ALL_CARDS] + [END]
         self.reset()
     def reset(self):
         # Call once per tournament to reset statistics
@@ -31,22 +31,37 @@ class Strategy:
         self.game_lengths.clear()
     def start_game(self):
         pass
+    def iter_actions(self, game, player):
+        a = list(self.actions)
+        random.shuffle(a)
+        return a
+    # def get_action(self, game, player):
+    #     actions = list(self.actions)
+    #     random.shuffle(actions)
+    #     for a in actions:
+    #         # if a.can_play(game, player):
+    #         if a in self.hand:
+    #             return a
+    #     return END
     def accept_action(self, action, game, player):
         self.act_counts[action] += 1
         self.act_counts_by_turn[game.turn, action] += 1
+    def iter_buys(self, game, player):
+        b = list(self.buys)
+        random.shuffle(b)
+        return b
+    # def get_buy(self, game, player):
+    #     buys = list(self.buys)
+    #     random.shuffle(buys)
+    #     for b in buys:
+    #         if b.can_buy(game, player):
+    #             return b
+    #     return END
     def accept_buy(self, buy, game, player):
         self.buy_counts[buy] += 1
         self.buy_counts_by_turn[game.turn, buy] += 1
     def end_game(self, reward, game, player):
         pass
-    def iter_actions(self, game, player):
-        a = list(self.actions)
-        random.shuffle(a)
-        return a
-    def iter_buys(self, game, player):
-        b = list(self.buys)
-        random.shuffle(b)
-        return b
     def fmt_actions(self):
         return 'not implemented'
     def fmt_buys(self):
@@ -56,7 +71,7 @@ class Strategy:
             cbt[turn][card] = count
 
         # Show every line for turns played
-        sorted_buys = sorted(self.buys, key=lambda m: (getattr(m.card, 'cost', 0), self.buy_counts[m]), reverse=True)
+        sorted_buys = sorted(self.buys, key=lambda m: (getattr(m, 'cost', 0), self.buy_counts[m]), reverse=True)
         lines = ['']
         for ii in range(len(cbt)):
             # sorted_buys = sorted(self.buys, key=lambda m: cbt[ii][m], reverse=True)
@@ -65,18 +80,19 @@ class Strategy:
                 # avoid blank lines for sequences never played
                 lines.append(f'    {ii+1:2d}:   '+line)
 
-        sorted_buys = sorted(self.buys, key=lambda m: (getattr(m.card, 'cost', 0), self.buy_counts[m]), reverse=True)
+        sorted_buys = sorted(self.buys, key=lambda m: (getattr(m, 'cost', 0), self.buy_counts[m]), reverse=True)
         n = sum(self.game_lengths.values()) # number of games played
         line = '   '.join(f"{self.buy_counts[m]/n:.1f} {m}" for m in sorted_buys if self.buy_counts[m] > 0)
         lines.append(f'    Avg   '+line)
 
         return '\n'.join(lines)
     def __str__(self):
+        n = sum(self.game_lengths.values()) # number of games played
         lens = ','.join(str(k) for k,v in self.game_lengths.most_common(3))
         minlen = min(self.game_lengths.keys())
         maxlen = max(self.game_lengths.keys())
         return "\n".join([
-            f"{self.__class__.__name__}    wins {self.wins}    suicides {self.suicides}    fitness {self.fitness}    game len {lens} ({minlen} - {maxlen})",
+            f"{self.__class__.__name__}    wins% {100*self.wins/n:.2f}    suicides% {100*self.suicides/n:.2f}    fitness {self.fitness/n:.2f}    game len {lens} ({minlen} - {maxlen})",
             f"  actions: {self.fmt_actions()}",
             f"  buys:    {self.fmt_buys()}",
         ])

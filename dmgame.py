@@ -1,6 +1,13 @@
 import random
 from dmcards import *
 
+try:
+    import numpy
+    # Numpy shuffle is WAY faster than Python shuffle
+    shuffle = numpy.random.shuffle
+except ModuleNotFoundError:
+    shuffle = random.shuffle
+
 STARTING_STOCKPILE = {
     Copper: 60,
     Silver: 40,
@@ -28,72 +35,11 @@ STARTING_STOCKPILE = {
 STARTING_DECK = [Copper]*7 + [Estate]*3
 MAX_TURNS = 50
 
-class Move:
-    def can_move(self, game, player):
-        raise NotImplementedError()
-    def do_move(self, game, player):
-        raise NotImplementedError()
-
-class BuyCard(Move):
-    def __init__(self, card):
-        self.card = card
-    def can_move(self, game, player):
-        return (
-            self.card.cost <= player.money
-            #and player.buys >= 1 # already checked in outer loop
-            and game.stockpile[self.card] >= 1
-        )
-    def do_move(self, game, player):
-        player.money -= self.card.cost
-        player.buys -= 1
-        player.discard.append(self.card)
-        game.stockpile[self.card] -= 1
-    def __str__(self):
-        return ""+str(self.card)
-
-class PlayCard(Move):
-    def __init__(self, card):
-        self.card = card
-    # def can_move(self, game, player):
-    #     return (
-    #         self.card in player.hand
-    #         #and player.actions >= 1 # already checked in outer loop
-    #         #and self.card.is_action # already checked by strategy
-    #     )
-    def do_move(self, game, player):
-        # This order is important: while playing, a card is neither part of the hand, nor the discards
-        player.hand.remove(self.card)
-        player.actions -= 1
-        self.card.play(game, player)
-        player.played.append(self.card)
-    def __str__(self):
-        return ""+str(self.card)
-
-class EndActions(Move):
-    card = None
-    def can_move(self, game, player):
-        return player.actions >= 1
-    def do_move(self, game, player):
-        player.actions = 0
-    def __str__(self):
-        return "END"
-
-class EndBuy(Move):
-    card = None
-    def can_move(self, game, player):
-        return True
-    def do_move(self, game, player):
-        player.actions = 0
-        player.buys = 0
-        player.draw_hand()
-    def __str__(self):
-        return "END"
-
 class Player:
     def __init__(self, name, deck, strategy):
         self.name = name
         self.deck = list(deck) # note, we draw from the back of the deck!
-        random.shuffle(self.deck)
+        shuffle(self.deck)
         self.strategy = strategy
         assert len(self.deck) == 10
         self.turns_played = 0
@@ -117,7 +63,7 @@ class Player:
         deck = self.deck
         if num > len(deck):
             discard = self.discard
-            random.shuffle(discard)
+            shuffle(discard)
             # we pull from the back of the deck, so discards must go in front
             discard.extend(deck)
             deck.clear()
@@ -147,40 +93,51 @@ class Player:
         yield from self.played
         yield from self.discard
     def calc_victory_points(self):
-        all_cards = list(self.all_cards())
-        base_pts = sum(c.victory_points for c in all_cards)
-        num_gardens = sum(1 for c in all_cards if c == Gardens)
-        garden_pts = num_gardens * (len(all_cards)//10)
+        base_pts = 0
+        num_cards = 0
+        num_gardens = 0
+        for c in self.all_cards():
+            num_cards += 1
+            if c.victory_points:
+                base_pts += c.victory_points
+            elif c == Gardens:
+                num_gardens += 1
+        garden_pts = num_gardens * (num_cards//10)
         return base_pts + garden_pts
 
 class Game:
     def __init__(self, players, stockpile):
         self.players = list(players)
         self.stockpile = dict(stockpile)
+        self.turn = 0
+        self.last_player = None
         for player in players:
             for card in player.all_cards():
                 assert self.stockpile[card] >= 1
                 self.stockpile[card] -= 1
     def is_over(self):
-        exhausted_cards = [k for k, v in self.stockpile.items() if v <= 0]
+        # Cards can be removed from the stockpile by certain actions,
+        # so there's really no substitute for re-checking each time:
+        exhausted_cards = 0
+        for v in self.stockpile.values():
+            if v <= 0:
+                exhausted_cards += 1
         return (
             self.stockpile[Province] <= 0
-            or len(exhausted_cards) >= 3
+            or exhausted_cards >= 3
         )
     def run(self):
-        self.turn = 0
-        self.last_player = None
         game = self
         for player in game.players:
             player.strategy.start_game()
 
         self.run_loop()
 
-        for player in game.players:
-            vp = player.calc_victory_points()
-            player.strategy.fitness += vp
-            score = (vp, -player.turns_played)
-            best = max((p.calc_victory_points(), -p.turns_played) for p in game.players if p != player)
+        vic_pts = [(p.calc_victory_points(), -p.turns_played) for p in game.players]
+        for ii, player in enumerate(game.players):
+            score = vic_pts[ii]
+            player.strategy.fitness += score[0] # victory points
+            best = max(vp for jj, vp in enumerate(vic_pts) if ii != jj)
             if score > best: reward = 1 # win
             elif score == best:  reward = 0.5 # tie
             else: reward = 0 # loss
@@ -203,23 +160,39 @@ class Game:
                 while player.actions > 0:
                     for action in player.strategy.iter_actions(game, player):
                         # Inlining this check for speed (hopefully):
-                        if action.card in player.hand: # action.can_move(game, player)
+                        if action in player.hand: # action.can_play(game, player)
                             # print(f"    {action}")
-                            action.do_move(game, player)
+                            action.play(game, player)
                             player.strategy.accept_action(action, game, player)
                             break
                     else:
                         break # no playable actions
+                    # Variant implementation - get single legal action
+                    # action = player.strategy.get_action(game, player)
+                    # # assert action.can_play(game, player)
+                    # # print(f"    {action}")
+                    # player.strategy.accept_action(action, game, player)
+                    # # if action == END: break
+                    # action.play(game, player)
+                # player.actions = 0 # not strictly needed
                 player.calc_money()
-                while player.buys > 0 and player.money > 0:
+                while player.buys > 0: #and player.money > 0: # some buys are zero cost!
                     for buy in player.strategy.iter_buys(game, player):
-                        if buy.can_move(game, player):
+                        if buy.can_buy(game, player):
                             # print(f"    {buy}")
-                            buy.do_move(game, player)
+                            buy.buy(game, player)
                             player.strategy.accept_buy(buy, game, player)
                             break
                     else:
                         break # no buyable cards
+                    # Variant implementation - get single legal buy
+                    # buy = player.strategy.get_buy(game, player)
+                    # # assert buy.can_buy(game, player)
+                    # # print(f"    {buy}")
+                    # player.strategy.accept_buy(buy, game, player)
+                    # # if buy == END: break
+                    # buy.buy(game, player)
+                # player.buys = 0 # not strictly needed
                 player.draw_hand()
                 player.turns_played += 1
                 game.last_player = player
@@ -255,7 +228,7 @@ def run_tournament(strategies, players_per_game=3, games_per_strategy=100):
         strategy.reset()
 
     for _ in range(games_per_strategy):
-        random.shuffle(strategies)
+        shuffle(strategies)
         for ii in range(0, popsize, players_per_game):
             players = [Player(str(jj+1), STARTING_DECK, strategies[ii+jj]) for jj in range(players_per_game)]
             game = Game(players, get_starting_stockpile(players_per_game))
