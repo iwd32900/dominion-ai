@@ -92,7 +92,7 @@ class EndBuy(Move):
 class Player:
     def __init__(self, name, deck, strategy):
         self.name = name
-        self.deck = list(deck)
+        self.deck = list(deck) # note, we draw from the back of the deck!
         random.shuffle(self.deck)
         self.strategy = strategy
         assert len(self.deck) == 10
@@ -113,15 +113,19 @@ class Player:
     def draw_cards(self, num):
         self.reveal_cards(num, self.hand)
     def reveal_cards(self, num, into_list):
-        for ii in range(num):
-            if len(self.deck) == 0:
-                self.deck, self.discard = self.discard, self.deck
-                random.shuffle(self.deck)
-                if len(self.deck) == 0:
-                    # Cards played this turn are not eligible to shuffle back in.
-                    # assert len(self.discard) == 0
-                    break # all cards are in hand already!
-            into_list.append(self.deck.pop())
+        # Significantly faster than pop/append one card at a time!
+        deck = self.deck
+        if num > len(deck):
+            discard = self.discard
+            random.shuffle(discard)
+            # we pull from the back of the deck, so discards must go in front
+            discard.extend(deck)
+            deck.clear()
+            # swap deck and discard
+            self.discard = deck
+            deck = self.deck = discard
+        into_list.extend(deck[-num:]) # this may be less than num cards
+        deck[-num:] = []
         return into_list
     def calc_money(self):
         self.money = (
