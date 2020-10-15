@@ -13,6 +13,10 @@ import ppo_clip
 # random.seed(123456)
 
 def onehot(val, minv, maxv, scale):
+    """
+    One-hot coding for an integer between minv and maxv (inclusive),
+    with positive and negative "overflow" scalars as well.
+    """
     assert val == int(val)
     val = int(val)
     val -= minv # new range [0, minv+maxv]
@@ -48,36 +52,22 @@ class PPOStrategy(Strategy):
         super().reset()
         if hasattr(self, 'ppo_buf'):
             self.ppo_buf.reset()
+    def __getstate__(self):
+        return {
+            "actor_critic": self.actor_critic,
+        }
+    def __setstate__(self, state):
+        self.__init__(ac=state['actor_critic'])
     def state_idx(self, game, player):
-        # To start, learn a static strategy, regardless of game state:
-        # return 0
-        # With competent players, most games end within ~20 turns
-        # t = min(game.turn, 19)
-        # s = player.calc_victory_points() - max(p.calc_victory_points() for p in game.players if p != player)
-        # if s < -13: s = -13
-        # elif s > 13: s = 13
-        # p = min(game.stockpile[Province], 3) # [0,8] in the 2-player game
-        # I've read that as a general rule, inputs should be on [-1,1]-ish
-        # return torch.as_tensor([t/20, s/13, p/3], dtype=torch.float)
-        # obs = torch.zeros(20+27+4, dtype=torch.float)
-        # # n-hot cumulative coding:
-        # obs[0:t] = 1
-        # if s < 0:
-        #     obs[20:20+(-s)] = 1
-        # elif s > 0:
-        #     obs[33:33+s] = 1
-        # obs[47:47+p] = 1
-        # # One-hot coding:
-        # # obs[t] = 1
-        # # obs[20+(s+13)] = 1
-        # # obs[47+p] = 1
         score = player.calc_victory_points() - max(p.calc_victory_points() for p in game.players if p != player)
         prov = game.stockpile[Province] # [0,8] in the 2-player game
         suicidal = torch.tensor([
             prov == 1 and score <= -6,
             prov == 2 and score <= 0,
         ], dtype=torch.float32)
+        # I've read that as a general rule, inputs should be on [-1,1]-ish
         obs = torch.cat([
+            # With competent players, most games end within ~20 turns
             onehot(game.turn, minv=0, maxv=19, scale=10),   # 22
             onehot(score, minv=-13, maxv=13, scale=6),      # 29
             onehot(prov, minv=1, maxv=3, scale=6),          # 5
@@ -114,7 +104,7 @@ def main_basic_polygrad():
     popsize = players # some multiple of 2, 3, and 4
     strategies = [PPOStrategy() for _ in range(popsize)]
 
-    CYCLES = 100
+    CYCLES = 400
     GPS = 250
     for cycle in range(CYCLES): # expect to Ctrl-C to exit early
         # if cycle >= 50:

@@ -20,7 +20,7 @@ class Card:
         player.buys += self.buys_when_played
         if self.cards_when_played:
             player.draw_cards(self.cards_when_played)
-    def __str__(self):
+    def __repr__(self):
         return self.name
 
 class WitchCard(Card):

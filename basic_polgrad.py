@@ -36,6 +36,12 @@ class BasicPolicyGradientStrategy(Strategy):
             self.logits_net = logits_net
         self.optimizer = Adam(self.logits_net.parameters(), lr=lr)
         self.learn = True # if False, do not update any of the strategies, and do not make exploratory moves
+    def __getstate__(self):
+        return {
+            "logits_net": self.logits_net,
+        }
+    def __setstate__(self, state):
+        self.__init__(logits_net=state['logits_net'])
     def reset(self):
         super().reset()
         self.state_hist = [] # [tensor(float32)]

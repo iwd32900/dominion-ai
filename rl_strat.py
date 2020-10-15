@@ -133,6 +133,13 @@ class MonteCarloStrategy(Strategy):
         self.c.update(c)
         self.sa_hist = [] # [(state,action)]
         self.learn = True # if False, do not update any of the strategies, and do not make exploratory moves
+    def __getstate__(self):
+        return {
+            "q": self.q,
+            "c": self.c,
+        }
+    def __setstate__(self, state):
+        self.__init__(q=state['q'], c=state['c'])
     def state_idx(self, game, player):
         # To start, learn a static strategy, regardless of game state:
         # return 0

@@ -6,8 +6,13 @@ import time
 from dmstrat import *
 from evol_strat import *
 from rl_strat import *
-from basic_polgrad import *
-from ppo_strat import *
+try:
+    import torch
+except ModuleNotFoundError:
+    print("Unable to find pytorch;  deep RL methods unavailable.")
+else:
+    from basic_polgrad import *
+    from ppo_strat import *
 
 # random.seed(123456)
 
@@ -17,19 +22,8 @@ def main_faceoff():
     for fname in sys.argv[1:]:
         with open(fname, "rb") as f:
             strategy = pickle.load(f)[0]
-            if isinstance(strategy, LinearRankStrategy):
-                strategies.append( LinearRankStrategy(weights=strategy.weights) )
-            elif isinstance(strategy, MonteCarloStrategy):
-                s = MonteCarloStrategy(q=strategy.q, c=strategy.c)
-                strategies.append(s)
-            elif isinstance(strategy, BasicPolicyGradientStrategy):
-                s = BasicPolicyGradientStrategy(logits_net=strategy.logits_net)
-                strategies.append(s)
-            elif isinstance(strategy, PPOStrategy):
-                s = PPOStrategy(ac=strategy.actor_critic)
-                strategies.append(s)
-            else:
-                assert False, "Unsupported type of strategy"
+            strategy.learn = False
+            strategies.append(strategy)
 
     CYCLES = 1
     for cycle in range(CYCLES): # expect to Ctrl-C to exit early

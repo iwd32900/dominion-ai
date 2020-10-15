@@ -46,6 +46,12 @@ class LinearRankStrategy(Strategy):
         for game_turn in range(MAX_TURNS):
             buy_key = lambda x: self.weights[x.idx] + game_turn*self.weights[x.idx+1]
             self.sorted_buys.append(sorted(self.buys, key=buy_key))
+    def __getstate__(self):
+        return {
+            "weights": self.weights,
+        }
+    def __setstate__(self, state):
+        self.__init__(weights=state['weights'])
     def iter_actions(self, game, player):
         return self.sorted_actions
     def iter_actions_raw(self, game, player):

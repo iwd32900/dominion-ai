@@ -174,6 +174,7 @@ class Game:
             player.strategy.wins += reward
             if player == game.last_player and reward == 0:
                 player.strategy.suicides += 1
+                # reward = -0.5 # explicitly penalize suicidal losses
             player.strategy.game_lengths[player.turns_played] += 1
             player.strategy.end_game(reward, game, player)
     def run_loop(self):
