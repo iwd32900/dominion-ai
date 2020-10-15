@@ -57,8 +57,8 @@ class Player:
         self.money = 0
         self.draw_cards(5)
     def draw_cards(self, num):
-        self.reveal_cards(num, self.hand)
-    def reveal_cards(self, num, into_list):
+        self.hand = self.reveal_cards(num)
+    def reveal_cards(self, num):
         # Significantly faster than pop/append one card at a time!
         deck = self.deck
         if num > len(deck):
@@ -70,7 +70,9 @@ class Player:
             # swap deck and discard
             self.discard = deck
             deck = self.deck = discard
-        into_list.extend(deck[-num:]) # this may be less than num cards
+        # Slice is faster than extend(), and is immutable (COW?)
+        # into_list.extend(deck[-num:]) # this may be less than num cards
+        into_list = deck[-num:]
         deck[-num:] = []
         return into_list
     def calc_money(self):

@@ -75,7 +75,7 @@ class AdventurerCard(Card):
         treasures = 0
         # After 50 tries, we assume there are no more treasures in the deck!
         for _ in range(50):
-            reveal = player.reveal_cards(1, list())
+            reveal = player.reveal_cards(1)
             if not reveal: break # deck is exhausted
             card = reveal[0]
             if card.money_in_hand:
@@ -146,7 +146,7 @@ class ThiefCard(Card):
         for defender in game.players:
             if defender == attacker or (Moat in defender.hand):
                 continue
-            cards = defender.reveal_cards(2, list())
+            cards = defender.reveal_cards(2)
             # print(f"got {cards}    deck {defender.deck}    discard {defender.discard}")
             if not cards: return
             cards.sort(key=lambda x: (x.is_treasure, x.money_in_hand), reverse=True)
