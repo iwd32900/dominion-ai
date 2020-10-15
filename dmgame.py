@@ -159,6 +159,8 @@ class Game:
                     return
                 # print(f"  Player {player.name}    pts = {player.calc_victory_points()}")
                 # print(f"    hand = {', '.join(str(x) for x in player.hand)}")
+                # For reasons I *really* can't explain, the "iter" approach
+                # is significantly faster than the "get" approach (at least for evol. strat.)
                 while player.actions > 0:
                     for action in player.strategy.iter_actions(game, player):
                         # Inlining this check for speed (hopefully):

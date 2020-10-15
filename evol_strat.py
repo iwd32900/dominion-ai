@@ -19,8 +19,15 @@ class LinearRankStrategy(Strategy):
         # go from 0 to 1 (or 1 to 0) over the course of a game.
         # linear_coef = zero # fixed-rank strategy
         linear_coef = normal_05
-        for move in (self.actions + self.buys):
-            move.idx = len(self.weight_dist)
+
+        self.act_idx = ai = {} # {action Card: int position in weights}
+        self.buy_idx = bi = {} # {action Card: int position in weights}
+        for act in self.actions:
+            ai[act] = len(self.weight_dist)
+            self.weight_dist.append(random.random)
+            self.weight_dist.append(linear_coef)
+        for buy in self.buys:
+            bi[buy] = len(self.weight_dist)
             self.weight_dist.append(random.random)
             self.weight_dist.append(linear_coef)
         num_idx = len(self.weight_dist)
@@ -31,20 +38,20 @@ class LinearRankStrategy(Strategy):
         assert len(self.weights) == num_idx
         # Raw sort order is used for things outside the normal Action phase, like Throne Rooms.
         # For now, don't include linear term for actions
-        raw_act_key = lambda x: self.weights[x.idx] #+ game.turn*self.weights[x.idx+1]
+        raw_act_key = lambda x: self.weights[ai[x]] #+ game.turn*self.weights[ai[x]+1]
         self.raw_sorted_actions = sorted(self.actions, key=raw_act_key)
         # Heuristic:
         # When playing a normal turn, cards that give extra actions come first.
         # Within those, cards that give extra draws come first, so there are more options.
         def act_key(x):
-            if x.card.actions_when_played:
-                return (0, -x.card.cards_when_played, self.weights[x.idx])
+            if x.actions_when_played:
+                return (0, -x.cards_when_played, self.weights[ai[x]])
             else:
-                return (1, 0, self.weights[x.idx])
+                return (1, 0, self.weights[ai[x]])
         self.sorted_actions = sorted(self.actions, key=act_key)
         self.sorted_buys = []
         for game_turn in range(MAX_TURNS):
-            buy_key = lambda x: self.weights[x.idx] + game_turn*self.weights[x.idx+1]
+            buy_key = lambda x: self.weights[bi[x]] + game_turn*self.weights[bi[x]+1]
             self.sorted_buys.append(sorted(self.buys, key=buy_key))
     def __getstate__(self):
         return {
@@ -58,6 +65,17 @@ class LinearRankStrategy(Strategy):
         return self.raw_sorted_actions
     def iter_buys(self, game, player):
         return self.sorted_buys[game.turn]
+    # def get_action(self, game, player):
+    #     for a in self.sorted_actions:
+    #         # if a.can_play(game, player):
+    #         if a in self.hand:
+    #             return a
+    #     return END
+    # def get_buy(self, game, player):
+    #     for b in self.sorted_buys[game.turn]:
+    #         if b.can_buy(game, player):
+    #             return b
+    #     return END
     def fmt_actions(self):
         return '   '.join(f"{self.act_counts[m]} {m}" for m in self.sorted_actions if self.act_counts[m] > 0)
     def fmt_buys(self):
@@ -80,7 +98,7 @@ class LinearRankStrategy(Strategy):
                 lines.append(f'    {ii+1:2d}:   '+line)
 
         n = sum(self.game_lengths.values()) # number of games played
-        line = '   '.join(f"{self.buy_counts[m]/n:.1f} {m} ({self.weights[m.idx+1]:.3f})" for m in self.sorted_buys[0] if self.buy_counts[m] > 0)
+        line = '   '.join(f"{self.buy_counts[m]/n:.1f} {m} ({self.weights[self.buy_idx[m]+1]:.3f})" for m in self.sorted_buys[0] if self.buy_counts[m] > 0)
         lines.append(f'    Avg   '+line)
 
         return '\n'.join(lines)
@@ -126,9 +144,13 @@ def main_evol():
     popsize = 12 * 32 # some multiple of 2, 3, and 4
     strategies = [LinearRankStrategy() for _ in range(popsize)]
 
-    for cycle in range(100): # expect to Ctrl-C to exit early
+    CYCLES = 100
+    GPS = 100
+    for cycle in range(CYCLES): # expect to Ctrl-C to exit early
+        if cycle == CYCLES-1: # last one
+            GPS = 1000 # better ranking before final save
         start = time.time()
-        run_tournament(strategies, players)
+        run_tournament(strategies, players, games_per_strategy=GPS)
         print(f"round {cycle}    {players} players    {time.time() - start:.2f} sec " + ("="*70))
         for strategy in strategies[:3]:
             print(strategy)
