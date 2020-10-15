@@ -128,11 +128,20 @@ class Player:
         deck[-num:] = []
         return into_list
     def calc_money(self):
-        self.money = (
-            sum(c.money_when_played for c in self.played)
-            + sum(c.money_in_hand for c in self.hand)
-        )
+        # This is slightly faster than sum() with generators in CPython,
+        # though slightly slower in PyPy.  (I'm optimizing for CPython.)
+        m = 0
+        for c in self.played:
+            m += c.money_when_played
+        for c in self.hand:
+            m += c.money_in_hand
+        self.money = m
+        # self.money = (
+        #     sum(c.money_when_played for c in self.played)
+        #     + sum(c.money_in_hand for c in self.hand)
+        # )
     def all_cards(self):
+        # This is faster than extend() in PyPy, and the same in CPython.
         yield from self.deck
         yield from self.hand
         yield from self.played
