@@ -34,31 +34,61 @@ def onehot(val, minv, maxv, scale):
 class PPOStrategy(Strategy):
     '''
     '''
-    def __init__(self, ac=None):
+    def __init__(self, act_ac=None, buy_ac=None):
         super().__init__() # calls reset()
-        obs_dim = 58 + len(self.buys) # depends on impl. of self.state_idx()
-        n_acts = len(self.buys)
-        if ac is None:
-            hidden_sizes = [64, 64]
-            self.actor_critic = ppo_clip.MLPActorCritic(obs_dim, n_acts, hidden_sizes)
-            #self.actor_critic = ppo_clip.MLPActorCritic(obs_dim, n_acts, hidden_sizes, activation=ppo_clip.nn.ReLU)
+
+        obs_dim = 58 + len(self.buys) # depends on impl. of self.act_state()
+        n_acts = len(self.actions)
+        if act_ac is None:
+            hidden_sizes = [32] #[64, 64]
+            self.act_ac = ppo_clip.MLPActorCritic(obs_dim, n_acts, hidden_sizes)
         else:
-            self.actor_critic = ac
-        self.ppo_buf = ppo_clip.PPOBuffer(obs_dim, n_acts, act_dim=None, size=1000 * 5 * MAX_TURNS)
-        self.ppo_algo = ppo_clip.PPOAlgo(self.actor_critic, pi_lr=1e-4)
-        # self.ppo_algo = ppo_clip.PPOAlgo(self.actor_critic, pi_lr=1e-4, vf_lr=3e-4)
+            self.act_ac = act_ac
+        self.act_buf = ppo_clip.PPOBuffer(obs_dim, n_acts, act_dim=None, size=1000 * 5 * MAX_TURNS)
+        self.act_optim = ppo_clip.PPOAlgo(self.act_ac) #, pi_lr=1e-4)
+
+        obs_dim = 58 + len(self.buys) # depends on impl. of self.buy_state()
+        n_acts = len(self.buys)
+        if buy_ac is None:
+            hidden_sizes = [32] #[64, 64]
+            self.buy_ac = ppo_clip.MLPActorCritic(obs_dim, n_acts, hidden_sizes)
+        else:
+            self.buy_ac = buy_ac
+        self.buy_buf = ppo_clip.PPOBuffer(obs_dim, n_acts, act_dim=None, size=1000 * 5 * MAX_TURNS)
+        self.buy_optim = ppo_clip.PPOAlgo(self.buy_ac, pi_lr=1e-4)
+
         self.learn = True # if False, do not update any of the strategies, and do not make exploratory moves
+    @property
+    def learn(self):
+        return self._learn
+    @learn.setter
+    def learn(self, learn):
+        self._learn = learn
+        if learn:
+            self.act_ac.train()
+            self.buy_ac.train()
+        else:
+            self.act_ac.eval()
+            self.buy_ac.eval()
     def reset(self):
         super().reset()
-        if hasattr(self, 'ppo_buf'):
-            self.ppo_buf.reset()
+        if hasattr(self, 'act_buf'):
+            self.act_buf.reset()
+        if hasattr(self, 'buy_buf'):
+            self.buy_buf.reset()
     def __getstate__(self):
         return {
-            "actor_critic": self.actor_critic,
+            "act_ac": self.act_ac,
+            "buy_ac": self.buy_ac,
         }
     def __setstate__(self, state):
-        self.__init__(ac=state['actor_critic'])
-    def state_idx(self, game, player):
+        self.__init__(
+            act_ac=state['act_ac'],
+            buy_ac=state['buy_ac']
+        )
+    def start_game(self):
+        self.bought = torch.zeros(len(self.buys), dtype=torch.float32)
+    def act_state(self, game, player):
         score = player.calc_victory_points() - max(p.calc_victory_points() for p in game.players if p != player)
         prov = game.stockpile[Province] # [0,8] in the 2-player game
         suicidal = torch.tensor([
@@ -75,15 +105,43 @@ class PPOStrategy(Strategy):
             self.bought / 5,                                # len(buys)
         ])
         return obs
-    def start_game(self):
-        self.bought = torch.zeros(len(self.buys), dtype=torch.float32)
+    def iter_actions(self, game, player):
+        actions_in_hand = [a for a in player.hand if a.is_action]
+        if not actions_in_hand: return []
+        obs = self.act_state(game, player)
+        fbn = np.array([not a.can_play(game, player) for a in self.actions]) # forbidden, or invalid, actions
+        act, val, logp, pi = self.act_ac.step(obs, fbn)
+        rew = 0
+        if self.learn:
+            self.act_buf.store(obs, fbn, act, rew, val, logp)
+        act_idx = act.item()
+        act_card = self.actions[act_idx]
+        return [ act_card ]
+    def buy_state(self, game, player):
+        score = player.calc_victory_points() - max(p.calc_victory_points() for p in game.players if p != player)
+        prov = game.stockpile[Province] # [0,8] in the 2-player game
+        suicidal = torch.tensor([
+            prov == 1 and score <= -6,
+            prov == 2 and score <= 0,
+        ], dtype=torch.float32)
+        # I've read that as a general rule, inputs should be on [-1,1]-ish
+        obs = torch.cat([
+            # With competent players, most games end within ~20 turns
+            onehot(game.turn, minv=0, maxv=19, scale=10),   # 22
+            onehot(score, minv=-13, maxv=13, scale=6),      # 29
+            onehot(prov, minv=1, maxv=3, scale=6),          # 5
+            suicidal,                                       # 2
+            self.bought / 5,                                # len(buys)
+        ])
+        return obs
     def iter_buys(self, game, player):
-        obs = self.state_idx(game, player)
-        fbn = np.array([not b.can_move(game, player) for b in self.buys]) # forbidden, or invalid, actions
-        act, val, logp, pi = self.actor_critic.step(obs, fbn)
+        obs = self.buy_state(game, player)
+        fbn = np.array([not b.can_buy(game, player) for b in self.buys]) # forbidden, or invalid, actions
+        act, val, logp, pi = self.buy_ac.step(obs, fbn)
         rew = 0
         # rew = buy.card.victory_points/100 if buy.card else 0
-        self.ppo_buf.store(obs, fbn, act, rew, val, logp)
+        if self.learn:
+            self.buy_buf.store(obs, fbn, act, rew, val, logp)
         buy_idx = act.item()
         self.bought[buy_idx] += 1
         buy = self.buys[buy_idx]
@@ -92,12 +150,14 @@ class PPOStrategy(Strategy):
         #     import ipdb; ipdb.set_trace()
         return [ buy ]
     def end_game(self, reward, game, player):
-        # reward = 2*reward - 1 # {0, 0.5, 1}  ->  {-1, 0, +1}
-        self.ppo_buf.finish_path(reward)
+        if self.learn:
+            self.act_buf.finish_path(reward)
+            self.buy_buf.finish_path(reward)
     def step(self):
-        if not self.learn:
-           return # do not update statistics
-        self.ppo_algo.update(self.ppo_buf)
+        if self.learn:
+            if self.act_buf.ptr > 0:
+                self.act_optim.update(self.act_buf)
+            self.buy_optim.update(self.buy_buf)
 
 def main_basic_polygrad():
     players = 2
@@ -121,7 +181,7 @@ def main_basic_polygrad():
             print(strategy)
         print("")
 
-        with open("strategies.pkl", "wb") as f:
+        with open("strategies_ppo.pkl", "wb") as f:
             pickle.dump(strategies, f)
 
         for strategy in strategies:
