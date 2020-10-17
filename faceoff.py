@@ -40,4 +40,5 @@ def main_faceoff():
 
 if __name__ == '__main__':
     main_faceoff()
+    # import cProfile; cProfile.run("main_faceoff()", "profile.stats")
 

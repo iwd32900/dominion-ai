@@ -1,6 +1,24 @@
 from collections import Counter, defaultdict
+import datetime
+import pickle
 import random
 from dmgame import *
+
+def save_strategies(strategies, basename):
+    filename = f"{basename}_{datetime.datetime.now().isoformat()}.pkl"
+    with open(filename, "wb") as f:
+        pickle.dump({
+            "all_cards": [str(c) for c in ALL_CARDS],
+            "strategies": strategies,
+        }, f)
+    return filename
+
+def load_strategies(filename):
+    with open(filename, "rb") as f:
+        obj = pickle.loads(f)
+        if isinstace(obj, list):
+            return obj
+        return obj['strategies']
 
 def sorted_by(target, keys, reverse=False):
     # Book specifies breaking ties at random -- maybe that's important?
@@ -63,7 +81,8 @@ class Strategy:
     def end_game(self, reward, game, player):
         pass
     def fmt_actions(self):
-        return 'not implemented'
+        sorted_actions = sorted(self.actions, key=lambda m: (getattr(m, 'cost', 0), self.act_counts[m]), reverse=True)
+        return '   '.join(f"{self.act_counts[m]} {m}" for m in sorted_actions if self.act_counts[m] > 0)
     def fmt_buys(self):
         # Refomat into more useful but probably slower form
         cbt = defaultdict(Counter)

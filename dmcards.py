@@ -135,10 +135,6 @@ class MineCard(Card):
             player.hand.append(Silver)
             game.stockpile[Silver] -= 1
 
-class MoatCard(Card):
-    def __init__(self):
-        super().__init__("Moat", cost=2, is_action=True, cards_when_played=2)
-
 class ThiefCard(Card):
     def __init__(self):
         super().__init__("Thief", cost=4, is_action=True)
@@ -173,6 +169,7 @@ Gardens  = Card("Gardens", cost=4, is_victory=True) # vic pts depends on final d
 Festival = Card("Festival", cost=5, actions_when_played=2, buys_when_played=1, money_when_played=2, is_action=True)
 Laboratory = Card("Laboratory", cost=5, actions_when_played=1, cards_when_played=2, is_action=True)
 Market = Card("Market", cost=5, actions_when_played=1, buys_when_played=1, cards_when_played=1, money_when_played=1, is_action=True)
+Moat = Card("Moat", cost=2, cards_when_played=2, is_action=True)
 Smithy = Card("Smithy", cost=4, cards_when_played=3, is_action=True)
 Village = Card("Village", cost=3, actions_when_played=2, cards_when_played=1, is_action=True)
 Woodcutter = Card("Woodcutter", cost=5, buys_when_played=1, money_when_played=2, is_action=True)
@@ -182,16 +179,17 @@ Adventurer = AdventurerCard()
 Bureaucrat = BureaucratCard()
 CouncilRoom = CouncilRoomCard()
 Mine = MineCard()
-Moat = MoatCard()
 
 Chancellor = ChancellorCard()
 Thief = ThiefCard()
 
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
-MULTIPLIER_CARDS = [Festival, Laboratory, Market, Smithy, Village, Woodcutter]
-DETERMINISTIC_CARDS = [Adventurer, Bureaucrat, CouncilRoom, Mine, Moat]
+MULTIPLIER_CARDS = [Festival, Laboratory, Market, Moat, Smithy, Village, Woodcutter]
+DETERMINISTIC_CARDS = [Adventurer, Bureaucrat, CouncilRoom, Mine]
 HEURISTIC_CARDS = [Chancellor, Thief]
-ALL_CARDS = MINIMAL_CARDS
+# ALL_CARDS = MINIMAL_CARDS
+# ALL_CARDS = MINIMAL_CARDS + [Smithy]
+# ALL_CARDS = MINIMAL_CARDS + [Smithy, Moat, Thief, Witch]
 # ALL_CARDS = MINIMAL_CARDS + [Gardens]
 # ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Festival, Laboratory, Market, Village, Woodcutter] # no Smithy
@@ -199,5 +197,4 @@ ALL_CARDS = MINIMAL_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Witch, Moat]
 # ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + [Gardens, Witch]
 # ALL_CARDS = MINIMAL_CARDS + HEURISTIC_CARDS
-# ALL_CARDS = MINIMAL_CARDS + [Smithy, Moat, Thief]
-# ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + HEURISTIC_CARDS + [Gardens, Witch]
+ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + HEURISTIC_CARDS + [Gardens, Witch]

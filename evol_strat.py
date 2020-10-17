@@ -21,7 +21,7 @@ class LinearRankStrategy(Strategy):
         linear_coef = normal_05
 
         self.act_idx = ai = {} # {action Card: int position in weights}
-        self.buy_idx = bi = {} # {action Card: int position in weights}
+        self.buy_idx = bi = {} # {Card: int position in weights}
         for act in self.actions:
             ai[act] = len(self.weight_dist)
             self.weight_dist.append(random.random)
@@ -98,7 +98,7 @@ class LinearRankStrategy(Strategy):
                 lines.append(f'    {ii+1:2d}:   '+line)
 
         n = sum(self.game_lengths.values()) # number of games played
-        line = '   '.join(f"{self.buy_counts[m]/n:.1f} {m} ({self.weights[self.buy_idx[m]+1]:.3f})" for m in self.sorted_buys[0] if self.buy_counts[m] > 0)
+        line = '   '.join(f"{self.buy_counts[m]/n:.1f} {m}" for m in self.sorted_buys[0] if self.buy_counts[m] > 0)
         lines.append(f'    Avg   '+line)
 
         return '\n'.join(lines)
@@ -151,12 +151,11 @@ def main_evol():
             GPS = 1000 # better ranking before final save
         start = time.time()
         run_tournament(strategies, players, games_per_strategy=GPS)
-        print(f"round {cycle}    {players} players    {time.time() - start:.2f} sec " + ("="*70))
+        print(f"round {cycle}    {players} players    {GPS} games    {time.time() - start:.2f} sec " + ("="*70))
         for strategy in strategies[:3]:
             print(strategy)
         print("")
-        with open("strategies.pkl", "wb") as f:
-            pickle.dump(strategies[:10], f)
+        save_strategies(strategies[:10], "save_evol")
         strategies = evolve(strategies)
 
 if __name__ == '__main__':

@@ -57,7 +57,9 @@ class Player:
         self.money = 0
         self.draw_cards(5)
     def draw_cards(self, num):
-        self.hand = self.reveal_cards(num)
+        # Can't just assign, because e.g. Smithy must add to existing hand
+        # self.hand = self.reveal_cards(num)
+        self.hand.extend(self.reveal_cards(num))
     def reveal_cards(self, num):
         # Significantly faster than pop/append one card at a time!
         deck = self.deck
