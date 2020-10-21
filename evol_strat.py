@@ -20,14 +20,9 @@ class LinearRankStrategy(Strategy):
         # linear_coef = zero # fixed-rank strategy
         linear_coef = normal_05
 
-        self.act_idx = ai = {} # {action Card: int position in weights}
-        self.buy_idx = bi = {} # {Card: int position in weights}
-        for act in self.actions:
-            ai[act] = len(self.weight_dist)
-            self.weight_dist.append(random.random)
-            self.weight_dist.append(linear_coef)
+        self.idx = idx = {} # {Card: int position in weights}
         for buy in self.buys:
-            bi[buy] = len(self.weight_dist)
+            idx[buy] = len(self.weight_dist)
             self.weight_dist.append(random.random)
             self.weight_dist.append(linear_coef)
         num_idx = len(self.weight_dist)
@@ -35,23 +30,33 @@ class LinearRankStrategy(Strategy):
             self.weights = list(weights)
         else:
             self.weights = [self.weight_dist[ii]() for ii in range(num_idx)]
+            # Hypothesis: when we have many actions to choose from, the key victory cards tend to get lost in the shuffle.
+            # This means many initial strategies are not viable, reducing the diversity of sampling.
+            # Thus, for all actions except a few, we push them further back in the list to start.
+            fav_act = list(self.actions)
+            random.shuffle(fav_act)
+            fav_act = fav_act[:4]
+            for act in self.actions:
+                if act not in fav_act:
+                    self.weights[idx[act]] += 1
         assert len(self.weights) == num_idx
-        # Raw sort order is used for things outside the normal Action phase, like Throne Rooms.
-        # For now, don't include linear term for actions
-        raw_act_key = lambda x: self.weights[ai[x]] #+ game.turn*self.weights[ai[x]+1]
-        self.raw_sorted_actions = sorted(self.actions, key=raw_act_key)
-        # Heuristic:
-        # When playing a normal turn, cards that give extra actions come first.
-        # Within those, cards that give extra draws come first, so there are more options.
-        def act_key(x):
-            if x.actions_when_played:
-                return (0, -x.cards_when_played, self.weights[ai[x]])
-            else:
-                return (1, 0, self.weights[ai[x]])
-        self.sorted_actions = sorted(self.actions, key=act_key)
+        # # Heuristic:
+        # # Most hands have 0 or 1 actions, so it's hard to learn a preference.
+        # # As a proxy, we assume the cards that we most want to BUY
+        # # are also the ones we most want to PLAY, with one optimization:
+        # # When playing a normal turn, cards that give extra actions come first.
+        # # Within those, cards that give extra draws come first, so there are more options.
+        # def act_key(x):
+        #     if x.actions_when_played:
+        #         return (0, -x.cards_when_played, buy_key(x))
+        #     else:
+        #         return (1, 0, buy_key(x))
+        def buy_key(x):
+            return self.weights[idx[x]] + game_turn*self.weights[idx[x]+1]
+        # self.sorted_actions = []
         self.sorted_buys = []
         for game_turn in range(MAX_TURNS):
-            buy_key = lambda x: self.weights[bi[x]] + game_turn*self.weights[bi[x]+1]
+            # self.sorted_actions.append(sorted(self.actions, key=act_key))
             self.sorted_buys.append(sorted(self.buys, key=buy_key))
     def __getstate__(self):
         return {
@@ -59,26 +64,15 @@ class LinearRankStrategy(Strategy):
         }
     def __setstate__(self, state):
         self.__init__(weights=state['weights'])
-    def iter_actions(self, game, player):
-        return self.sorted_actions
-    def iter_actions_raw(self, game, player):
-        return self.raw_sorted_actions
+    # def iter_actions(self, game, player):
+    #     return self.sorted_actions[game.turn]
     def iter_buys(self, game, player):
         return self.sorted_buys[game.turn]
-    # def get_action(self, game, player):
-    #     for a in self.sorted_actions:
-    #         # if a.can_play(game, player):
-    #         if a in self.hand:
-    #             return a
-    #     return END
-    # def get_buy(self, game, player):
-    #     for b in self.sorted_buys[game.turn]:
-    #         if b.can_buy(game, player):
-    #             return b
-    #     return END
-    def fmt_actions(self):
-        return '   '.join(f"{self.act_counts[m]} {m}" for m in self.sorted_actions if self.act_counts[m] > 0)
+    # def fmt_actions(self):
+    #     n = sum(self.game_lengths.values()) # number of games played
+    #     return '   '.join(f"{self.act_counts[m]/n:.1f} {m}" for m in self.sorted_actions[0] if self.act_counts[m] > 0)
     def fmt_buys(self):
+        n = sum(self.game_lengths.values()) # number of games played
         # Refomat into more useful but probably slower form
         cbt = defaultdict(Counter)
         for (turn,card), count in self.buy_counts_by_turn.items():
@@ -92,12 +86,11 @@ class LinearRankStrategy(Strategy):
         # Show every line for turns played
         lines = ['']
         for ii, buys in enumerate(sorted_used_buys):
-            line = '   '.join(f"{cbt[ii][m]} {m}" for m in buys if cbt[ii][m] > 0)
+            line = '   '.join(f"{100*cbt[ii][m]/n:.0f} {m}" for m in buys if cbt[ii][m] > 0) + '   (%)'
             if sum(cbt[ii].values()) > 0:
                 # avoid blank lines for sequences never played
                 lines.append(f'    {ii+1:2d}:   '+line)
 
-        n = sum(self.game_lengths.values()) # number of games played
         line = '   '.join(f"{self.buy_counts[m]/n:.1f} {m}" for m in self.sorted_buys[0] if self.buy_counts[m] > 0)
         lines.append(f'    Avg   '+line)
 

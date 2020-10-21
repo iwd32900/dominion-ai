@@ -105,18 +105,23 @@ class PPOStrategy(Strategy):
             self.bought / 5,                                # len(buys)
         ])
         return obs
-    def iter_actions(self, game, player):
-        actions_in_hand = [a for a in player.hand if a.is_action]
-        if not actions_in_hand: return []
-        obs = self.act_state(game, player)
-        fbn = np.array([not a.can_play(game, player) for a in self.actions]) # forbidden, or invalid, actions
-        act, val, logp, pi = self.act_ac.step(obs, fbn)
-        rew = 0
-        if self.learn:
-            self.act_buf.store(obs, fbn, act, rew, val, logp)
-        act_idx = act.item()
-        act_card = self.actions[act_idx]
-        return [ act_card ]
+    # There are relatively few hands per game with >1 action available,
+    # and even fewer with >1 terminal action.
+    # As such, given finite training time, a neural network is no better
+    # than the base heuristic here!
+    #
+    # def iter_actions(self, game, player):
+    #     actions_in_hand = [a for a in player.hand if a.is_action]
+    #     if not actions_in_hand: return []
+    #     obs = self.act_state(game, player)
+    #     fbn = np.array([not a.can_play(game, player) for a in self.actions]) # forbidden, or invalid, actions
+    #     act, val, logp, pi = self.act_ac.step(obs, fbn)
+    #     rew = 0
+    #     if self.learn:
+    #         self.act_buf.store(obs, fbn, act, rew, val, logp)
+    #     act_idx = act.item()
+    #     act_card = self.actions[act_idx]
+    #     return [ act_card ]
     def buy_state(self, game, player):
         score = player.calc_victory_points() - max(p.calc_victory_points() for p in game.players if p != player)
         prov = game.stockpile[Province] # [0,8] in the 2-player game
@@ -181,8 +186,7 @@ def main_basic_polygrad():
             print(strategy)
         print("")
 
-        with open("strategies_ppo.pkl", "wb") as f:
-            pickle.dump(strategies, f)
+        save_strategies(strategies, "save_ppo")
 
         for strategy in strategies:
             strategy.step()

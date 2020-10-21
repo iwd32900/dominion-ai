@@ -20,10 +20,9 @@ def main_faceoff():
     players = 2
     strategies = []
     for fname in sys.argv[1:]:
-        with open(fname, "rb") as f:
-            strategy = pickle.load(f)[0]
-            strategy.learn = False
-            strategies.append(strategy)
+        strategy = load_strategies(fname)[0]
+        strategy.learn = False
+        strategies.append(strategy)
 
     CYCLES = 1
     for cycle in range(CYCLES): # expect to Ctrl-C to exit early
