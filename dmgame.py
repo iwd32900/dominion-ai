@@ -19,6 +19,7 @@ STARTING_STOCKPILE = {
     Gardens: 0,
     Adventurer: 10,
     Bureaucrat: 10,
+    Cellar: 10,
     Chancellor: 10,
     Chapel: 10,
     CouncilRoom: 10,

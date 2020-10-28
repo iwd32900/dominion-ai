@@ -69,7 +69,8 @@ class LinearRankStrategy(Strategy):
     def iter_buys(self, game, player):
         return self.sorted_buys[game.turn]
     # Our logic for ranking ALL possibly buys including END is identical to our normal buying logic
-    rank_buys = iter_buys
+    def rank_buys(self, game, player):
+        return self.sorted_buys[game.turn] + [Curse]
     # def fmt_actions(self):
     #     n = sum(self.game_lengths.values()) # number of games played
     #     return '   '.join(f"{self.act_counts[m]/n:.1f} {m}" for m in self.sorted_actions[0] if self.act_counts[m] > 0)

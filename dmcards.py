@@ -1,3 +1,4 @@
+from collections import Counter
 import random
 
 class Card:
@@ -91,6 +92,44 @@ class BureaucratCard(Card):
                     defender.deck.append(defender.hand.pop(ii))
                     break
 Bureaucrat = BureaucratCard()
+
+class CellarCard(Card):
+    """
+    "+1 Action. Discard any number of cards. +1 Card per card discarded."
+
+    If >50% of cards in the deck are preferred (or equal) to the one we're holding,
+    we should discard it and draw anew.
+    Logic in the face of a potential shuffle is complex
+    and our simple rule here will make the wrong decision in some cases.
+    """
+    def __init__(self):
+        super().__init__("Cellar", cost=2, is_action=True, actions_when_played=1)
+    def _play(self, game, player):
+        # start_cards = len(list(player.all_cards()))
+        hand = player.hand
+        buys = list(player.strategy.rank_buys(game, player))
+        rank = {card:rank for rank, card in enumerate(buys)}
+        deck_cnt = Counter(player.deck) # contents aren't secret, order IS
+        if len(player.deck) < len(hand):
+            # We may trigger a reshuffle -- assuming we will smooths stats of small numbers
+            # which could otherwise lead to perverse decisions.
+            deck_cnt.update(player.discard)
+        deck_len = sum(deck_cnt.values()) or 1 # possible to have our WHOLE deck in our hand!
+        cnt_by_rank = [deck_cnt[card] for card in buys] # list index is rank, contents is num cards
+
+        discard = []
+        for card in hand:
+            card_rank = rank[card]
+            frac_better_or_equal = sum(cnt_by_rank[0:card_rank+1]) / deck_len
+            if frac_better_or_equal > 0.5:
+                discard.append(card)
+        for card in discard:
+            hand.remove(card)
+        # Must return cards to discard first, in case we need to shuffle them back into the deck!
+        player.discard.extend(discard)
+        player.draw_cards(len(discard))
+        # assert len(list(player.all_cards())) == start_cards
+Cellar = CellarCard()
 
 class ChapelCard(Card):
     """
@@ -204,7 +243,7 @@ Woodcutter = Card("Woodcutter", cost=5, buys_when_played=1, money_when_played=2,
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Moat, Smithy, Village, Woodcutter]
 DETERMINISTIC_CARDS = [Adventurer, Bureaucrat, CouncilRoom, Mine]
-HEURISTIC_CARDS = [Chapel, Chancellor, Thief]
+HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Thief]
 # ALL_CARDS = MINIMAL_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Smithy]
 # ALL_CARDS = MINIMAL_CARDS + [Smithy, Moat, Thief, Witch]
