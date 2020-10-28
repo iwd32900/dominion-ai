@@ -58,16 +58,6 @@ class EndCard(Card):
         player.actions = 0
 END = EndCard("END")
 
-class WitchCard(Card):
-    def __init__(self):
-        super().__init__("Witch", cost=5, is_action=True, cards_when_played=2)
-    def _play(self, game, attacker):
-        for defender in game.players:
-            if defender == attacker or game.stockpile[Curse] < 1 or (Moat in defender.hand):
-                continue
-            defender.discard.append(Curse)
-            game.stockpile[Curse] -= 1
-
 class AdventurerCard(Card):
     def __init__(self):
         super().__init__("Adventurer", cost=6, is_action=True)
@@ -84,6 +74,7 @@ class AdventurerCard(Card):
                 if treasures >= 2: break
             else:
                 player.discard.append(card)
+Adventurer = AdventurerCard()
 
 class BureaucratCard(Card):
     def __init__(self):
@@ -99,6 +90,27 @@ class BureaucratCard(Card):
                 if card.is_victory:
                     defender.deck.append(defender.hand.pop(ii))
                     break
+Bureaucrat = BureaucratCard()
+
+class ChapelCard(Card):
+    """
+    "Trash up to 4 cards from your hand."
+    Heuristic:  if we would rather end our turn than buy card X,
+        then we should trash card X.  Not perfect, but reasonable.
+    """
+    def __init__(self):
+        super().__init__("Chapel", cost=2, is_action=True)
+    def _play(self, game, player):
+        hand = player.hand
+        buys = list(player.strategy.rank_buys(game, player))
+        trash = []
+        for card in [Curse] + buys[::-1]:
+            if card == END or len(trash) >= 4: break
+            while card in hand and len(trash) < 4:
+                hand.remove(card)
+                trash.append(card)
+        assert len(trash) <= 4
+Chapel = ChapelCard()
 
 class ChancellorCard(Card):
     def __init__(self):
@@ -112,6 +124,7 @@ class ChancellorCard(Card):
         if deck_vp > discard_vp:
             player.discard.extend(player.deck)
             player.deck.clear()
+Chancellor = ChancellorCard()
 
 class CouncilRoomCard(Card):
     def __init__(self):
@@ -121,6 +134,7 @@ class CouncilRoomCard(Card):
             if defender == attacker: # not really an attack
                 continue
             defender.draw_cards(1)
+CouncilRoom = CouncilRoomCard()
 
 class MineCard(Card):
     def __init__(self):
@@ -134,6 +148,7 @@ class MineCard(Card):
             player.hand.remove(Copper) # trashed - lost from game
             player.hand.append(Silver)
             game.stockpile[Silver] -= 1
+Mine = MineCard()
 
 class ThiefCard(Card):
     def __init__(self):
@@ -153,6 +168,18 @@ class ThiefCard(Card):
             else:
                 assert cards[0] == Copper # and we trash it
             defender.discard.extend(cards[1:])
+Thief = ThiefCard()
+
+class WitchCard(Card):
+    def __init__(self):
+        super().__init__("Witch", cost=5, is_action=True, cards_when_played=2)
+    def _play(self, game, attacker):
+        for defender in game.players:
+            if defender == attacker or game.stockpile[Curse] < 1 or (Moat in defender.hand):
+                continue
+            defender.discard.append(Curse)
+            game.stockpile[Curse] -= 1
+Witch = WitchCard()
 
 # Singleton objects
 Copper = Card("Copper", cost=0, money_in_hand=1, is_treasure=True)
@@ -174,19 +201,10 @@ Smithy = Card("Smithy", cost=4, cards_when_played=3, is_action=True)
 Village = Card("Village", cost=3, actions_when_played=2, cards_when_played=1, is_action=True)
 Woodcutter = Card("Woodcutter", cost=5, buys_when_played=1, money_when_played=2, is_action=True)
 
-Witch = WitchCard()
-Adventurer = AdventurerCard()
-Bureaucrat = BureaucratCard()
-CouncilRoom = CouncilRoomCard()
-Mine = MineCard()
-
-Chancellor = ChancellorCard()
-Thief = ThiefCard()
-
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Moat, Smithy, Village, Woodcutter]
 DETERMINISTIC_CARDS = [Adventurer, Bureaucrat, CouncilRoom, Mine]
-HEURISTIC_CARDS = [Chancellor, Thief]
+HEURISTIC_CARDS = [Chapel, Chancellor, Thief]
 # ALL_CARDS = MINIMAL_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Smithy]
 # ALL_CARDS = MINIMAL_CARDS + [Smithy, Moat, Thief, Witch]
