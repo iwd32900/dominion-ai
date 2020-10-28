@@ -35,6 +35,9 @@ class Card:
     def play(self, game, player):
         # This order is important: while playing, a card is neither part of the hand, nor the discards
         player.hand.remove(self)
+        # But nothing interacts with "played" cards during a turn, so safe to put it here.
+        # Will not be included during a reshuffle in-turn.  Also, Feast needs access to trash itself.
+        player.played.append(self)
         player.actions -= 1
         # money is handled separately
         player.actions += self.actions_when_played
@@ -42,7 +45,6 @@ class Card:
         if self.cards_when_played:
             player.draw_cards(self.cards_when_played)
         self._play(game, player)
-        player.played.append(self)
     def _play(self, game, player):
         pass
     def __repr__(self):
@@ -175,6 +177,23 @@ class CouncilRoomCard(Card):
             defender.draw_cards(1)
 CouncilRoom = CouncilRoomCard()
 
+class FeastCard(Card):
+    """
+    "Trash this card. Gain a card costing up to $5."
+    """
+    def __init__(self):
+        super().__init__("Feast", cost=2, is_action=True)
+    def _play(self, game, player):
+        buys = list(player.strategy.rank_buys(game, player))
+        for card in buys:
+            if card in [self, END]: break
+            if game.stockpile[card] >= 1 and card.cost <= 5:
+                player.played.remove(self) # and don't put it anywhere -- trashed
+                player.discard.append(card)
+                game.stockpile[card] -= 1
+                break
+Feast = FeastCard()
+
 class MineCard(Card):
     def __init__(self):
         super().__init__("Mine", cost=5, is_action=True)
@@ -243,7 +262,7 @@ Woodcutter = Card("Woodcutter", cost=5, buys_when_played=1, money_when_played=2,
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Moat, Smithy, Village, Woodcutter]
 DETERMINISTIC_CARDS = [Adventurer, Bureaucrat, CouncilRoom, Mine]
-HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Thief]
+HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Feast, Thief]
 # ALL_CARDS = MINIMAL_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Smithy]
 # ALL_CARDS = MINIMAL_CARDS + [Smithy, Moat, Thief, Witch]

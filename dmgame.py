@@ -17,23 +17,26 @@ STARTING_STOCKPILE = {
     Province: 0,
     Curse: 0,
     Gardens: 0,
-    Adventurer: 10,
-    Bureaucrat: 10,
-    Cellar: 10,
-    Chancellor: 10,
-    Chapel: 10,
-    CouncilRoom: 10,
-    Festival: 10,
-    Laboratory: 10,
-    Market: 10,
-    Mine: 10,
-    Moat: 10,
-    Smithy: 10,
-    Thief: 10,
-    Village: 10,
-    Witch: 10,
-    Woodcutter: 10,
+    # Adventurer: 10,
+    # Bureaucrat: 10,
+    # Cellar: 10,
+    # Chancellor: 10,
+    # Chapel: 10,
+    # CouncilRoom: 10,
+    # Festival: 10,
+    # Laboratory: 10,
+    # Market: 10,
+    # Mine: 10,
+    # Moat: 10,
+    # Smithy: 10,
+    # Thief: 10,
+    # Village: 10,
+    # Witch: 10,
+    # Woodcutter: 10,
 }
+for card in ALL_CARDS:
+    STARTING_STOCKPILE.setdefault(card, 10)
+del card
 STARTING_DECK = [Copper]*7 + [Estate]*3
 MAX_TURNS = 50
 
