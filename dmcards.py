@@ -182,7 +182,7 @@ class FeastCard(Card):
     "Trash this card. Gain a card costing up to $5."
     """
     def __init__(self):
-        super().__init__("Feast", cost=2, is_action=True)
+        super().__init__("Feast", cost=4, is_action=True)
     def _play(self, game, player):
         buys = list(player.strategy.rank_buys(game, player))
         for card in buys:
@@ -239,6 +239,22 @@ class WitchCard(Card):
             game.stockpile[Curse] -= 1
 Witch = WitchCard()
 
+class WorkshopCard(Card):
+    """
+    "Gain a card costing up to $4."
+    """
+    def __init__(self):
+        super().__init__("Workshop", cost=3, is_action=True)
+    def _play(self, game, player):
+        buys = list(player.strategy.rank_buys(game, player))
+        for card in buys:
+            if card == END: break
+            if game.stockpile[card] >= 1 and card.cost <= 4:
+                player.discard.append(card)
+                game.stockpile[card] -= 1
+                break
+Workshop = WorkshopCard()
+
 # Singleton objects
 Copper = Card("Copper", cost=0, money_in_hand=1, is_treasure=True)
 Silver = Card("Silver", cost=3, money_in_hand=2, is_treasure=True)
@@ -262,7 +278,7 @@ Woodcutter = Card("Woodcutter", cost=5, buys_when_played=1, money_when_played=2,
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Moat, Smithy, Village, Woodcutter]
 DETERMINISTIC_CARDS = [Adventurer, Bureaucrat, CouncilRoom, Mine]
-HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Feast, Thief]
+HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Feast, Thief, Workshop]
 # ALL_CARDS = MINIMAL_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Smithy]
 # ALL_CARDS = MINIMAL_CARDS + [Smithy, Moat, Thief, Witch]
