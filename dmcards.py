@@ -194,6 +194,20 @@ class FeastCard(Card):
                 break
 Feast = FeastCard()
 
+class MilitiaCard(Card):
+    def __init__(self):
+        super().__init__("Militia", cost=4, is_action=True, money_when_played=2)
+    def _play(self, game, attacker):
+        for defender in game.players:
+            if defender == attacker or (Moat in defender.hand) or len(defender.hand) <= 3:
+                continue
+            buys = list(defender.strategy.rank_buys(game, defender))
+            rank = {card:rank for rank, card in enumerate(buys)}
+            defender.hand.sort(key=lambda c: rank[c])
+            defender.discard.extend(defender.hand[3:])
+            defender.hand[3:] = [] # truncate
+Militia = MilitiaCard()
+
 class MineCard(Card):
     def __init__(self):
         super().__init__("Mine", cost=5, is_action=True)
@@ -295,7 +309,7 @@ Woodcutter = Card("Woodcutter", cost=5, buys_when_played=1, money_when_played=2,
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Moat, Smithy, Village, Woodcutter]
 DETERMINISTIC_CARDS = [Adventurer, Bureaucrat, CouncilRoom, Mine]
-HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Feast, MoneyLender, Thief, Workshop]
+HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Feast, Militia, MoneyLender, Thief, Workshop]
 SIZE_DISTORTION = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, Witch, Woodcutter, Workshop]
 # SIZE_DISTORTION_1 = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, Witch, Woodcutter]
 # SIZE_DISTORTION_2 = [Cellar, Chapel, Feast, Laboratory, Thief, Village, Witch, Woodcutter, Workshop]
