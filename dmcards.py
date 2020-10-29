@@ -39,9 +39,9 @@ class Card:
         # Will not be included during a reshuffle in-turn.  Also, Feast needs access to trash itself.
         player.played.append(self)
         player.actions -= 1
-        # money is handled separately
         player.actions += self.actions_when_played
         player.buys += self.buys_when_played
+        player.money += self.money_when_played
         if self.cards_when_played:
             player.draw_cards(self.cards_when_played)
         self._play(game, player)
@@ -208,6 +208,23 @@ class MineCard(Card):
             game.stockpile[Silver] -= 1
 Mine = MineCard()
 
+class MoneyLenderCard(Card):
+    """
+    "Trash a Copper from your hand.  If you do, +$3."
+
+    Let's not overcomplicate this decision:  if we bought it, we mean to use it.
+    """
+    def __init__(self):
+        super().__init__("Money_Lender", cost=4, is_action=True)
+    def can_play(self, game, player):
+        return super().can_play(game, player) and Copper in player.hand
+    def _play(self, game, player):
+        hand = player.hand
+        if Copper in hand:
+            hand.remove(Copper) # and trash it
+            player.money += 3
+MoneyLender = MoneyLenderCard()
+
 class ThiefCard(Card):
     def __init__(self):
         super().__init__("Thief", cost=4, is_action=True)
@@ -278,7 +295,11 @@ Woodcutter = Card("Woodcutter", cost=5, buys_when_played=1, money_when_played=2,
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Moat, Smithy, Village, Woodcutter]
 DETERMINISTIC_CARDS = [Adventurer, Bureaucrat, CouncilRoom, Mine]
-HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Feast, Thief, Workshop]
+HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Feast, MoneyLender, Thief, Workshop]
+SIZE_DISTORTION = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, Witch, Woodcutter, Workshop]
+# SIZE_DISTORTION_1 = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, Witch, Woodcutter]
+# SIZE_DISTORTION_2 = [Cellar, Chapel, Feast, Laboratory, Thief, Village, Witch, Woodcutter, Workshop]
+
 # ALL_CARDS = MINIMAL_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Smithy]
 # ALL_CARDS = MINIMAL_CARDS + [Smithy, Moat, Thief, Witch]
@@ -290,3 +311,4 @@ HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Feast, Thief, Workshop]
 # ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + [Gardens, Witch]
 # ALL_CARDS = MINIMAL_CARDS + HEURISTIC_CARDS
 ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + HEURISTIC_CARDS + [Gardens, Witch]
+# ALL_CARDS = MINIMAL_CARDS + SIZE_DISTORTION
