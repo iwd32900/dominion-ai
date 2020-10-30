@@ -293,6 +293,28 @@ class RemodelCard(Card):
                     return # action complete, need a 2-level break
 Remodel = RemodelCard()
 
+class SpyCard(Card):
+    """
+    "+1 Card. +1 Action. Each player (including you) reveals the top card of his deck
+    and either discards it or puts it back, your choice."
+    """
+    def __init__(self):
+        super().__init__("Spy", cost=4, is_action=True, actions_when_played=1, cards_when_played=1)
+    def _play(self, game, attacker):
+        bad_cards = [Estate, Duchy, Province, Gardens, Curse]
+        drawn = attacker.reveal_cards(1)
+        if not drawn: pass
+        elif drawn[0] in bad_cards: attacker.discard.append(drawn[0])
+        else: attacker.deck.append(drawn[0])
+        for defender in game.players:
+            if defender == attacker or (Moat in defender.hand):
+                continue
+            drawn = defender.reveal_cards(1)
+            if not drawn: pass
+            elif drawn[0] in bad_cards: defender.deck.append(drawn[0])
+            else: defender.discard.append(drawn[0])
+Spy = SpyCard()
+
 class ThiefCard(Card):
     def __init__(self):
         super().__init__("Thief", cost=4, is_action=True)
@@ -363,7 +385,7 @@ Woodcutter = Card("Woodcutter", cost=5, buys_when_played=1, money_when_played=2,
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Moat, Smithy, Village, Woodcutter]
 DETERMINISTIC_CARDS = [Adventurer, Bureaucrat, CouncilRoom, Mine]
-HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Feast, Library, Militia, MoneyLender, Remodel, Thief, Workshop]
+HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Feast, Library, Militia, MoneyLender, Remodel, Spy, Thief, Workshop]
 SIZE_DISTORTION = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, Witch, Woodcutter, Workshop]
 # SIZE_DISTORTION_1 = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, Witch, Woodcutter]
 # SIZE_DISTORTION_2 = [Cellar, Chapel, Feast, Laboratory, Thief, Village, Witch, Woodcutter, Workshop]
