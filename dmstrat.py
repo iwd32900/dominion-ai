@@ -33,6 +33,7 @@ class Strategy:
         self.buy_counts = Counter() # {Card: int}
         self.act_counts_by_turn = Counter() # {(turn, Card): int}
         self.buy_counts_by_turn = Counter() # {(turn, Card): int}
+        self.deck_counts = Counter() # {Card: int}
         self.game_lengths = Counter() # {int: int}
         # Makes no sense to leave playable actions in the hand, if you bought them, so:
         self.actions = [c for c in ALL_CARDS if c.is_action] #+ [END]
@@ -50,6 +51,7 @@ class Strategy:
         self.buy_counts.clear()
         self.act_counts_by_turn.clear()
         self.buy_counts_by_turn.clear()
+        self.deck_counts.clear()
         self.game_lengths.clear()
     def start_game(self):
         pass
@@ -87,7 +89,7 @@ class Strategy:
         self.buy_counts[buy] += 1
         self.buy_counts_by_turn[game.turn, buy] += 1
     def end_game(self, reward, game, player):
-        pass
+        self.deck_counts.update(player.all_cards())
     def fmt_actions(self):
         n = sum(self.game_lengths.values()) # number of games played
         sorted_actions = sorted(self.actions, key=lambda m: self.act_counts[m], reverse=True)

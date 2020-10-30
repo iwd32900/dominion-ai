@@ -286,7 +286,7 @@ class RemodelCard(Card):
             if game.stockpile[wanted] <= 0:
                 continue # none left to buy, keep trying
             for trash in hand: # sorted in reverse desirability
-                if trash.cost + 2 <= wanted.cost and rank[wanted] < rank[trash]:
+                if wanted.cost <= trash.cost + 2 and rank[wanted] < rank[trash]:
                     hand.remove(trash)
                     player.discard.append(wanted)
                     game.stockpile[wanted] -= 1
@@ -386,6 +386,8 @@ MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Moat, Smithy, Village, Woodcutter]
 DETERMINISTIC_CARDS = [Adventurer, Bureaucrat, CouncilRoom, Mine]
 HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Feast, Library, Militia, MoneyLender, Remodel, Spy, Thief, Workshop]
+FIRST_GAME = [Cellar, Market, Militia, Mine, Moat, Remodel, Smithy, Village, Woodcutter, Workshop]
+INTERACTION = [Bureaucrat, Chancellor, CouncilRoom, Festival, Library, Militia, Moat, Spy, Thief, Village]
 SIZE_DISTORTION = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, Witch, Woodcutter, Workshop]
 # SIZE_DISTORTION_1 = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, Witch, Woodcutter]
 # SIZE_DISTORTION_2 = [Cellar, Chapel, Feast, Laboratory, Thief, Village, Witch, Woodcutter, Workshop]
@@ -401,4 +403,6 @@ SIZE_DISTORTION = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, W
 # ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + [Gardens, Witch]
 # ALL_CARDS = MINIMAL_CARDS + HEURISTIC_CARDS
 ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + HEURISTIC_CARDS + [Gardens, Witch]
+ALL_CARDS = MINIMAL_CARDS + FIRST_GAME
+# ALL_CARDS = MINIMAL_CARDS + INTERACTION
 # ALL_CARDS = MINIMAL_CARDS + SIZE_DISTORTION

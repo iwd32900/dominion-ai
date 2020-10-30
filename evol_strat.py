@@ -95,7 +95,9 @@ class LinearRankStrategy(Strategy):
                 lines.append(f'    {ii+1:2d}:   '+line)
 
         line = '   '.join(f"{self.buy_counts[m]/n:.1f} {m}" for m in self.sorted_buys[0] if self.buy_counts[m] > 0)
-        lines.append(f'    Avg   '+line)
+        lines.append(f'    Buys   '+line)
+        line = '   '.join(f"{self.deck_counts[m]/n:.1f} {m}" for m in self.sorted_buys[0] if self.deck_counts[m] > 0)
+        lines.append(f'    Deck   '+line)
 
         return '\n'.join(lines)
 
