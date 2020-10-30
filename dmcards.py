@@ -239,6 +239,30 @@ class MoneyLenderCard(Card):
             player.money += 3
 MoneyLender = MoneyLenderCard()
 
+class RemodelCard(Card):
+    """
+    "Trash a card from your hand.  Gain a card costing up to $2 more than the trashed card."
+    """
+    def __init__(self):
+        super().__init__("Remodel", cost=4, is_action=True)
+    def _play(self, game, player):
+        hand = player.hand
+        buys = list(player.strategy.rank_buys(game, player))
+        rank = {card:rank for rank, card in enumerate(buys)}
+        hand.sort(key=lambda x: rank[x], reverse=True)
+        for wanted in buys:
+            if wanted == END:
+                return # nothing left that we want to acquire, we're done
+            if game.stockpile[wanted] <= 0:
+                continue # none left to buy, keep trying
+            for trash in hand: # sorted in reverse desirability
+                if trash.cost + 2 <= wanted.cost and rank[wanted] < rank[trash]:
+                    hand.remove(trash)
+                    player.discard.append(wanted)
+                    game.stockpile[wanted] -= 1
+                    return # action complete, need a 2-level break
+Remodel = RemodelCard()
+
 class ThiefCard(Card):
     def __init__(self):
         super().__init__("Thief", cost=4, is_action=True)
@@ -309,7 +333,7 @@ Woodcutter = Card("Woodcutter", cost=5, buys_when_played=1, money_when_played=2,
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Moat, Smithy, Village, Woodcutter]
 DETERMINISTIC_CARDS = [Adventurer, Bureaucrat, CouncilRoom, Mine]
-HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Feast, Militia, MoneyLender, Thief, Workshop]
+HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Feast, Militia, MoneyLender, Remodel, Thief, Workshop]
 SIZE_DISTORTION = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, Witch, Woodcutter, Workshop]
 # SIZE_DISTORTION_1 = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, Witch, Woodcutter]
 # SIZE_DISTORTION_2 = [Cellar, Chapel, Feast, Laboratory, Thief, Village, Witch, Woodcutter, Workshop]
