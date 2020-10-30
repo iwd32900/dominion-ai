@@ -194,6 +194,36 @@ class FeastCard(Card):
                 break
 Feast = FeastCard()
 
+class LibraryCard(Card):
+    """
+    "Draw until you have 7 cards in your hand. You may set aside any Action cards
+    drawn this way, as you draw them; discard the set aside cards after you finish drawing."
+    """
+    def __init__(self):
+        super().__init__("Library", cost=5, is_action=True)
+    def _play(self, game, player):
+        hand = player.hand
+        n_act = player.actions
+        for card in hand:
+            if card.is_action:
+                n_act += card.actions_when_played - 1
+        # Keep actions as long as we have slots to play them
+        set_aside = []
+        while len(hand) < 7:
+            drawn = player.reveal_cards(1)
+            if not drawn:
+                break # no more deck left to draw from
+            card = drawn[0]
+            if card.is_action:
+                if n_act <= 0:
+                    set_aside.append(card)
+                    continue
+                else:
+                    n_act += card.actions_when_played - 1
+            hand.append(card)
+        player.discard.extend(set_aside)
+Library = LibraryCard()
+
 class MilitiaCard(Card):
     def __init__(self):
         super().__init__("Militia", cost=4, is_action=True, money_when_played=2)
@@ -333,7 +363,7 @@ Woodcutter = Card("Woodcutter", cost=5, buys_when_played=1, money_when_played=2,
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Moat, Smithy, Village, Woodcutter]
 DETERMINISTIC_CARDS = [Adventurer, Bureaucrat, CouncilRoom, Mine]
-HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Feast, Militia, MoneyLender, Remodel, Thief, Workshop]
+HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Feast, Library, Militia, MoneyLender, Remodel, Thief, Workshop]
 SIZE_DISTORTION = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, Witch, Woodcutter, Workshop]
 # SIZE_DISTORTION_1 = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, Witch, Woodcutter]
 # SIZE_DISTORTION_2 = [Cellar, Chapel, Feast, Laboratory, Thief, Village, Witch, Woodcutter, Workshop]
