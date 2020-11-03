@@ -154,7 +154,15 @@ class PPOStrategy(Strategy):
         # if buy.card == Province and obs[56] != 0:
         #     import ipdb; ipdb.set_trace()
         return [ buy ]
+    def rank_buys(self, game, player):
+        obs = self.buy_state(game, player)
+        fbn = np.array([not b.can_buy(game, player) for b in self.buys]) # forbidden, or invalid, actions
+        act, val, logp, pi = self.buy_ac.step(obs, fbn)
+        # For now, stick with a deterministic ranking, not a probabilistic one.
+        buys = sorted_by(self.buys, pi.probs.tolist(), reverse=True)
+        return buys + [Curse]
     def end_game(self, reward, game, player):
+        super().end_game(reward, game, player)
         if self.learn:
             self.act_buf.finish_path(reward)
             self.buy_buf.finish_path(reward)
@@ -175,13 +183,14 @@ def main_basic_polygrad():
         # if cycle >= 50:
         #     GPS = 2000
         if cycle == CYCLES-1: # last one
+            GPS = 1000
             for strategy in strategies:
                 strategy.learn = False
         start = time.time()
         # Might need additional games:  starting code uses batch of 5000 moves...
         run_tournament(strategies, players, games_per_strategy=GPS)
 
-        print(f"round {cycle}    {players} players    {time.time() - start:.2f} sec " + ("="*70))
+        print(f"round {cycle}    {players} players    {GPS} games    {time.time() - start:.2f} sec " + ("="*70))
         for strategy in strategies:
             print(strategy)
         print("")

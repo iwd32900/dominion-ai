@@ -109,7 +109,10 @@ class CellarCard(Card):
     def _play(self, game, player):
         # start_cards = len(list(player.all_cards()))
         hand = player.hand
+        hand_len = len(hand)
+        # print("Start hand", hand)
         buys = list(player.strategy.rank_buys(game, player))
+        buys.sort(key=lambda x: x in USELESS) # sort Victory cards to the end -- good to buy, but not in hand
         rank = {card:rank for rank, card in enumerate(buys)}
         deck_cnt = Counter(player.deck) # contents aren't secret, order IS
         if len(player.deck) < len(hand):
@@ -130,6 +133,10 @@ class CellarCard(Card):
         # Must return cards to discard first, in case we need to shuffle them back into the deck!
         player.discard.extend(discard)
         player.draw_cards(len(discard))
+        # print("Discard", discard)
+        # print("End hand", hand)
+        # print("Player hand", player.hand)
+        assert len(player.hand) == hand_len
         # assert len(list(player.all_cards())) == start_cards
 Cellar = CellarCard()
 
@@ -301,17 +308,16 @@ class SpyCard(Card):
     def __init__(self):
         super().__init__("Spy", cost=4, is_action=True, actions_when_played=1, cards_when_played=1)
     def _play(self, game, attacker):
-        bad_cards = [Estate, Duchy, Province, Gardens, Curse]
         drawn = attacker.reveal_cards(1)
         if not drawn: pass
-        elif drawn[0] in bad_cards: attacker.discard.append(drawn[0])
+        elif drawn[0] in USELESS: attacker.discard.append(drawn[0])
         else: attacker.deck.append(drawn[0])
         for defender in game.players:
             if defender == attacker or (Moat in defender.hand):
                 continue
             drawn = defender.reveal_cards(1)
             if not drawn: pass
-            elif drawn[0] in bad_cards: defender.deck.append(drawn[0])
+            elif drawn[0] in USELESS: defender.deck.append(drawn[0])
             else: defender.discard.append(drawn[0])
 Spy = SpyCard()
 
@@ -382,15 +388,20 @@ Smithy = Card("Smithy", cost=4, cards_when_played=3, is_action=True)
 Village = Card("Village", cost=3, actions_when_played=2, cards_when_played=1, is_action=True)
 Woodcutter = Card("Woodcutter", cost=5, buys_when_played=1, money_when_played=2, is_action=True)
 
+USELESS = [Estate, Duchy, Province, Gardens, Curse]
+
 MINIMAL_CARDS = [Copper, Silver, Gold, Estate, Duchy, Province]
 MULTIPLIER_CARDS = [Festival, Laboratory, Market, Moat, Smithy, Village, Woodcutter]
 DETERMINISTIC_CARDS = [Adventurer, Bureaucrat, CouncilRoom, Mine]
 HEURISTIC_CARDS = [Cellar, Chapel, Chancellor, Feast, Library, Militia, MoneyLender, Remodel, Spy, Thief, Workshop]
 FIRST_GAME = [Cellar, Market, Militia, Mine, Moat, Remodel, Smithy, Village, Woodcutter, Workshop]
+FIRST_GAME_1 = [Cellar, Market, Mine, Moat, Remodel, Smithy, Village, Woodcutter, Workshop]
 INTERACTION = [Bureaucrat, Chancellor, CouncilRoom, Festival, Library, Militia, Moat, Spy, Thief, Village]
+INTERACTION_1 = [Bureaucrat, Chancellor, CouncilRoom, Festival, Library, Moat, Spy, Thief, Village]
+INTERACTION_2 = [Bureaucrat, Chancellor, CouncilRoom, Festival, Militia, Moat, Spy, Thief, Village]
 SIZE_DISTORTION = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, Witch, Woodcutter, Workshop]
-# SIZE_DISTORTION_1 = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, Witch, Woodcutter]
-# SIZE_DISTORTION_2 = [Cellar, Chapel, Feast, Laboratory, Thief, Village, Witch, Woodcutter, Workshop]
+SIZE_DISTORTION_1 = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, Witch, Woodcutter]
+SIZE_DISTORTION_2 = [Cellar, Chapel, Feast, Laboratory, Thief, Village, Witch, Woodcutter, Workshop]
 
 # ALL_CARDS = MINIMAL_CARDS
 # ALL_CARDS = MINIMAL_CARDS + [Smithy]
@@ -402,7 +413,5 @@ SIZE_DISTORTION = [Cellar, Chapel, Feast, Gardens, Laboratory, Thief, Village, W
 # ALL_CARDS = MINIMAL_CARDS + [Witch, Moat]
 # ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + [Gardens, Witch]
 # ALL_CARDS = MINIMAL_CARDS + HEURISTIC_CARDS
-ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + HEURISTIC_CARDS + [Gardens, Witch]
+# ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + HEURISTIC_CARDS + [Gardens, Witch]
 ALL_CARDS = MINIMAL_CARDS + FIRST_GAME
-# ALL_CARDS = MINIMAL_CARDS + INTERACTION
-# ALL_CARDS = MINIMAL_CARDS + SIZE_DISTORTION

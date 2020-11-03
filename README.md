@@ -1,5 +1,7 @@
 ## TODO
 
+Change buy rank to action rank:  put USELESS cards at end of ranking
+
 ## The literature
 
 [Dominion Strategy](https://dominionstrategy.com/)

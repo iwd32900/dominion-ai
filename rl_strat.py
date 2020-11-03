@@ -174,7 +174,15 @@ class MonteCarloStrategy(Strategy):
             # Follow the policy, sort actions by value
             b = sorted_by(self.buys, q, reverse=True)
         return b
+    def rank_buys(self, game, player):
+        self.last_s = s = self.state_idx(game, player)
+        # Lookup all action-values for current state
+        q = self.q[s]
+        # Follow the policy, sort actions by value
+        b = sorted_by(self.buys, q, reverse=True)
+        return b + [Curse]
     def end_game(self, reward, game, player):
+        super().end_game(reward, game, player)
         if not self.learn:
             return # do not update statistics
         if self.last_s is None:
@@ -218,8 +226,7 @@ def main_rl():
         for strategy in strategies[:1]:
             print(strategy)
         print("")
-        with open("strategies.pkl", "wb") as f:
-            pickle.dump(strategies, f)
+        save_strategies(strategies, "save_rl")
 
         # global alpha, eps
         # alpha *= 0.950 # shrink learning rate over 100 rounds

@@ -113,7 +113,9 @@ class Strategy:
         sorted_buys = sorted(self.buys, key=lambda m: (getattr(m, 'cost', 0), self.buy_counts[m]), reverse=True)
         n = sum(self.game_lengths.values()) # number of games played
         line = '   '.join(f"{self.buy_counts[m]/n:.1f} {m}" for m in sorted_buys if self.buy_counts[m] > 0)
-        lines.append(f'    Avg   '+line)
+        lines.append(f'    Buys   '+line)
+        line = '   '.join(f"{self.deck_counts[m]/n:.1f} {m}" for m in sorted_buys if self.deck_counts[m] > 0)
+        lines.append(f'    Deck   '+line)
 
         return '\n'.join(lines)
     def __str__(self):

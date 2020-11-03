@@ -66,6 +66,8 @@ class Player:
         # self.hand = self.reveal_cards(num)
         self.hand.extend(self.reveal_cards(num))
     def reveal_cards(self, num):
+        if num <= 0: return []
+        # Otherwise, we return the whole contents of the deck b/c of Python slicing!
         # Significantly faster than pop/append one card at a time!
         deck = self.deck
         if num > len(deck):
