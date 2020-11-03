@@ -13,6 +13,7 @@ except ModuleNotFoundError:
 else:
     from basic_polgrad import *
     from ppo_strat import *
+    from nnmc_strat import *
 
 # random.seed(123456)
 

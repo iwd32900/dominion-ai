@@ -5,7 +5,8 @@ import random
 from dmgame import *
 
 # Use one consistent timestamp throughout the program execution
-nowstamp = datetime.datetime.now().isoformat(timespec='seconds')
+# nowstamp = datetime.datetime.now().isoformat(timespec='seconds')
+nowstamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
 def save_strategies(strategies, basename):
     filename = f"{basename}_{nowstamp}.pkl"
     with open(filename, "wb") as f:
