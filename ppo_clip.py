@@ -15,7 +15,7 @@ import torch
 import torch.nn as nn
 from torch.distributions.normal import Normal
 from torch.distributions.categorical import Categorical
-from torch.optim import Adam
+from torch.optim import Adam, AdamW
 
 # import gym
 # from gym.spaces import Box, Discrete
@@ -86,7 +86,18 @@ class MLPCategoricalActor(Actor):
         logits = self.logits_net(obs)
         fbn = torch.as_tensor(fbn, dtype=torch.bool)
         logits[fbn] = -np.inf # mask out forbidden (disallowed) actions
-        return Categorical(logits=logits)
+        pi = Categorical(logits=logits)
+        return pi
+        # # It's possible to add an epsilon greedy-type mechanism to prevent total convergence,
+        # # but it doesn't seem to help any...
+        # eps = 0.1
+        # bump = (eps / (1-eps)) / (~fbn).sum(axis=-1).type(torch.float32)
+        # try:
+        #     probs = pi.probs + bump[..., None]
+        # except:
+        #     import ipdb; ipdb.set_trace()
+        # pi_ = Categorical(probs=probs)
+        # return pi_
 
     def _log_prob_from_distribution(self, pi, act):
         return pi.log_prob(act)
@@ -392,6 +403,8 @@ class PPOAlgo:
         # Set up optimizers for policy and value function
         self.pi_optimizer = Adam(self.ac.pi.parameters(), lr=pi_lr)
         self.vf_optimizer = Adam(self.ac.v.parameters(), lr=vf_lr)
+        # self.pi_optimizer = AdamW(self.ac.pi.parameters(), lr=pi_lr, weight_decay=1)
+        # self.vf_optimizer = AdamW(self.ac.v.parameters(), lr=vf_lr, weight_decay=1)
 
         # # Set up model saving
         # logger.setup_pytorch_saver(ac)

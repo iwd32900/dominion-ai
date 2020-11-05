@@ -139,30 +139,29 @@ class AnnMCStrategy(Strategy):
         ])
         return obs
     def iter_buys(self, game, player):
+        rew = 0
+        # rew = buy.card.victory_points/100 if buy.card else 0
+        obs = self.buy_state(game, player)
+        q = self.buy_nn(obs)
+        fbn = np.array([not b.can_buy(game, player) for b in self.buys]) # forbidden, or invalid, actions
+        q[fbn] = -np.inf
         if random.random() < self.eps and self.learn:
-            # Sort the possible buys in random order
-            b = list(self.buys)
-            shuffle(b)
-            return b
+            # Random choice among legal actions
+            r = torch.rand_like(q)
+            r[fbn] = -np.inf
+            act = r.argmax()
         else:
-            # Follow the policy, sort actions by value
-            # b = sorted_by(self.buys, q, reverse=True)
-            obs = self.buy_state(game, player)
-            q = self.buy_nn(obs)
-            fbn = np.array([not b.can_buy(game, player) for b in self.buys]) # forbidden, or invalid, actions
-            q[fbn] = -np.inf
             act = q.argmax()
-            rew = 0
-            # rew = buy.card.victory_points/100 if buy.card else 0
+            # Interestingly, including the random actions in the history seems to SLOW/HURT convergence.
             if self.learn:
                 self.buy_buf.store(obs, fbn, act, rew)
-            buy_idx = act.item()
-            self.bought[buy_idx] += 1
-            buy = self.buys[buy_idx]
-            # For debugging during tournament play
-            # if buy.card == Province and obs[56] != 0:
-            #     import ipdb; ipdb.set_trace()
-            return [ buy ]
+        buy_idx = act.item()
+        self.bought[buy_idx] += 1
+        buy = self.buys[buy_idx]
+        # For debugging during tournament play
+        # if buy.card == Province and obs[56] != 0:
+        #     import ipdb; ipdb.set_trace()
+        return [ buy ]
     def rank_buys(self, game, player):
         # Follow the policy, sort actions by value
         obs = self.buy_state(game, player)
@@ -189,14 +188,13 @@ def main_nnmc():
     strategies = [AnnMCStrategy() for _ in range(popsize)]
 
     CYCLES, GPS = 500, 250
+    # CYCLES, GPS = 2000, 250
     # CYCLES, GPS = 1000, 1000 # larger batches should make estimates more stable?
     for cycle in range(CYCLES): # expect to Ctrl-C to exit early
-        # Decrease random exploration over time
-        eps = np.interp(cycle, [0, 0.8*CYCLES, CYCLES], [0.1, 0.01, 0.001])
-        for strategy in strategies:
-            strategy.eps = eps
-        # if cycle >= 50:
-        #     GPS = 2000
+        # # Decrease random exploration over time
+        # eps = np.interp(cycle, [0, 20, 0.9*CYCLES], [1.0, 0.1, 0.02])
+        # for strategy in strategies:
+        #     strategy.eps = eps
         if cycle == CYCLES-1: # last one
             GPS = 1000
             for strategy in strategies:
