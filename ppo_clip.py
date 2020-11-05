@@ -85,7 +85,7 @@ class MLPCategoricalActor(Actor):
     def _distribution(self, obs, fbn):
         logits = self.logits_net(obs)
         fbn = torch.as_tensor(fbn, dtype=torch.bool)
-        logits[fbn] = -np.inf # mask out forbidden (disallowed) actions
+        logits[fbn] = -1e30 # mask out forbidden (disallowed) actions.  -np.inf causes NaNs in Categorical.entropy()
         pi = Categorical(logits=logits)
         return pi
         # # It's possible to add an epsilon greedy-type mechanism to prevent total convergence,
@@ -421,6 +421,10 @@ class PPOAlgo:
             ratio = torch.exp(logp - logp_old)
             clip_adv = torch.clamp(ratio, 1-self.clip_ratio, 1+self.clip_ratio) * adv
             loss_pi = -(torch.min(ratio * adv, clip_adv)).mean()
+            # ent = pi.entropy().mean()
+            # print(f"Loss_pi = {loss_pi.item()}    Ent_pi = {ent.item()}")
+            # # For Militia/Market/Moat, 0.01 has little effect and 0.10 prevents most learning
+            # loss_pi -= 0.01*ent
 
             # Useful extra info
             approx_kl = (logp_old - logp).mean().item()
