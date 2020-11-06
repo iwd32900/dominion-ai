@@ -78,15 +78,28 @@ class Actor(nn.Module):
 
 class MLPCategoricalActor(Actor):
 
-    def __init__(self, obs_dim, act_dim, hidden_sizes, activation):
+    def __init__(self, obs_dim, act_dim, hidden_sizes, activation, fbn_eps=1e-3):
         super().__init__()
         self.logits_net = mlp([obs_dim] + list(hidden_sizes) + [act_dim], activation)
+        # Probability of forbidden actions will be reduced by a factor of `fbn_eps`
+        self.log_fbn_eps = -np.log(fbn_eps) # ~ +7
 
     def _distribution(self, obs, fbn):
+        # Despite the name "logits", in the multiclass scenario these are actually log *probabilities*, not log odds.
+        # See torch.distributions.utils.logits_to_probs()
         logits = self.logits_net(obs)
         fbn = torch.as_tensor(fbn, dtype=torch.bool)
-        logits[fbn] = -1e30 # mask out forbidden (disallowed) actions.  -np.inf causes NaNs in Categorical.entropy()
+        # Want some mechanism of reducing the probability of forbidden (disallowed) actions,
+        # to zero or close to it.  Actually zeroing may cause some math problems...
+        # logits[fbn] = -1e30 # = -np.inf # -np.inf causes NaNs in Categorical.entropy()
+        # Log probs can all be shifted by a constant without changing probability distribution.
+        logits[fbn] -= self.log_fbn_eps # reduce probability to near zero
         pi = Categorical(logits=logits)
+        # This is a more complicated way of achieving something similar, maybe tough on gradients?
+        # pi.probs[fbn] = 1e-6 # mask out forbidden (disallowed) actions, avoiding zero prob which can cause NaNs
+        # mask = torch.ones_like(pi.probs)
+        # mask[fbn] = 1e-6
+        # pi = Categorical(probs=pi.probs * mask) # force re-normalization of probs to sum to 1
         return pi
         # # It's possible to add an epsilon greedy-type mechanism to prevent total convergence,
         # # but it doesn't seem to help any...
