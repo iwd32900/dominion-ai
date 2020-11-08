@@ -1,3 +1,6 @@
+import math
+import multiprocessing
+import os
 import random
 from dmcards import *
 
@@ -227,7 +230,7 @@ def print_stockpile(stockpile):
     for card, count in stockpile.items():
         print(f"  {count} {card}")
 
-def run_tournament(strategies, players_per_game=3, games_per_strategy=100):
+def run_tournament(strategies, players_per_game=3, games_per_strategy=100, sort=True):
     popsize = len(strategies)
     assert popsize % players_per_game == 0, "Popsize must be evenly divisible by number of players"
 
@@ -241,4 +244,37 @@ def run_tournament(strategies, players_per_game=3, games_per_strategy=100):
             game = Game(players, get_starting_stockpile(players_per_game))
             game.run()
 
-    strategies.sort(key=lambda x: (x.wins, x.fitness), reverse=True)
+    if sort:
+        strategies.sort(key=lambda x: (x.wins, x.fitness), reverse=True)
+
+# The following methods only work with LinearRankStrategy,
+# or strategies that only need to evaluate fitness to learn.
+# It will not work with RL strategies or ANNs that need to pass
+# detailed game statistics back to the main process.
+
+def mp_run(strategies, players_per_game, games_per_strategy):
+    run_tournament(strategies, players_per_game, games_per_strategy, sort=False)
+    return [(s.wins, s.fitness) for s in strategies]
+
+class MPTournament:
+    def __init__(self):
+        self.num_workers = os.cpu_count()
+        self.pool_size = max(1, self.num_workers - 1)
+        self.pool = multiprocessing.Pool(processes=self.pool_size)
+    def run(self, strategies, players_per_game=3, games_per_strategy=100):
+        # We run one share worth of work in the main program,
+        # so that we have representative play-order data to print as training progresses,
+        # without having to pickle and pass all that data back and forth.
+        games_per_worker = int(math.ceil(games_per_strategy / self.num_workers))
+        mp_scores = [self.pool.apply_async(mp_run, (strategies, players_per_game, games_per_worker))
+            for ii in range(self.pool_size)]
+        run_tournament(strategies, players_per_game, games_per_worker, sort=False)
+        for mp_score in mp_scores:
+            for strategy, (wins, fitness) in zip(strategies, mp_score.get()):
+                strategy.wins += wins
+                strategy.fitness += fitness
+        # Normalize wins & fitness again so stats printouts look less weird
+        for strategy in strategies:
+            strategy.wins /= self.num_workers
+            strategy.fitness /= self.num_workers
+        strategies.sort(key=lambda x: (x.wins, x.fitness), reverse=True)

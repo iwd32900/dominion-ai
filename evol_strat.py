@@ -142,13 +142,20 @@ def main_evol():
     popsize = 12 * 32 # some multiple of 2, 3, and 4
     strategies = [LinearRankStrategy() for _ in range(popsize)]
 
+    mp_tourn = MPTournament()
+    use_mp = True
+
     CYCLES = 100
     GPS = 100
     for cycle in range(CYCLES): # expect to Ctrl-C to exit early
         if cycle == CYCLES-1: # last one
             GPS = 1000 # better ranking before final save
+            # use_mp = False
         start = time.time()
-        run_tournament(strategies, players, games_per_strategy=GPS)
+        if use_mp:
+            mp_tourn.run(strategies, players, games_per_strategy=GPS)
+        else:
+            run_tournament(strategies, players, games_per_strategy=GPS)
         print(f"round {cycle}    {players} players    {GPS} games    {time.time() - start:.2f} sec " + ("="*70))
         for strategy in strategies[:3]:
             print(strategy)

@@ -1,6 +1,5 @@
 ## TODO
 
-Change buy rank to action rank:  put USELESS cards at end of ranking
 Implement PyTorch TensorBoard output:  https://pytorch.org/docs/stable/tensorboard.html
 
 ## The literature

@@ -28,6 +28,16 @@ def sorted_by(target, keys, reverse=False):
     keys = [(k, random.random()) for k in keys]
     return [t for k, t in sorted(zip(keys, target), key=lambda x: x[0], reverse=reverse)]
 
+def elo_from_wins(win_frac):
+    """
+    Calculate the difference in Elo rating between players,
+    given the winning percentage as a fraction 0 - 1.
+    See source of https://www.3dkingdoms.com/chess/elo.htm
+    """
+    if win_frac >= 1: return 1e4
+    elif win_frac <= 0: return -1e4
+    else: return -400 * math.log10((1 / win_frac) - 1)
+
 class Strategy:
     def __init__(self):
         self.act_counts = Counter() # {Card: int}
@@ -125,7 +135,7 @@ class Strategy:
         minlen = min(self.game_lengths.keys())
         maxlen = max(self.game_lengths.keys())
         return "\n".join([
-            f"{self.__class__.__name__}    wins% {100*self.wins/n:.2f}    suicides% {100*self.suicides/n:.2f}    fitness {self.fitness/n:.2f}    game len {lens} ({minlen} - {maxlen})",
+            f"{self.__class__.__name__}    wins% {100*self.wins/n:.2f}    Elo {elo_from_wins(self.wins/n):+.0f}    suicides% {100*self.suicides/n:.2f}    fitness {self.fitness/n:.2f}    game len {lens} ({minlen} - {maxlen})",
             f"  actions: {self.fmt_actions()}    (multiples: {self.multiple_actions/n:.2f} / {self.multiple_terminal_actions/n:.2f})",
             f"  buys:    {self.fmt_buys()}",
         ])
