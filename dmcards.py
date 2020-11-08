@@ -239,6 +239,7 @@ class MilitiaCard(Card):
             if defender == attacker or (Moat in defender.hand) or len(defender.hand) <= 3:
                 continue
             buys = list(defender.strategy.rank_buys(game, defender))
+            buys.sort(key=lambda x: x in USELESS) # sort Victory cards to the end -- good to buy, but not in hand
             rank = {card:rank for rank, card in enumerate(buys)}
             defender.hand.sort(key=lambda c: rank[c])
             defender.discard.extend(defender.hand[3:])
@@ -415,4 +416,4 @@ SIZE_DISTORTION_2 = [Cellar, Chapel, Feast, Laboratory, Thief, Village, Witch, W
 # ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + [Gardens, Witch]
 # ALL_CARDS = MINIMAL_CARDS + HEURISTIC_CARDS
 # ALL_CARDS = MINIMAL_CARDS + MULTIPLIER_CARDS + DETERMINISTIC_CARDS + HEURISTIC_CARDS + [Gardens, Witch]
-ALL_CARDS = MINIMAL_CARDS + INTERACTION
+ALL_CARDS = MINIMAL_CARDS + SIZE_DISTORTION
