@@ -124,8 +124,35 @@ def mutate(w, weight_dist, rate):
         if random.random() < rate:
             w[ii] = weight_dist[ii]()
 
+def select(strategies, clusters, factor):
+    """
+    Encourage diversity in the selection step:
+    take the top `1/factor` fraction from `clusters`
+    different clusters of similar solutions.
+
+    Inspired by https://blog.otoro.net/2016/05/07/backprop-neat/
+    Doesn't appear to actually help -- hurts our convergence with many clusters.
+
+    Costs about 0.1 seconds, with or without PCA.
+    """
+    start = time.time()
+    import numpy as np
+    from sklearn.cluster import KMeans
+    # from sklearn.decomposition import PCA
+    weights = np.array([s.weights for s in strategies])
+    # weights = PCA(n_components=3, whiten=True).fit_transform(weights) # suggested by KMeans docs
+    labels = KMeans(n_clusters=clusters).fit(weights).labels_
+    strats = np.array(strategies)
+    selnum = len(strategies) // (clusters * factor)
+    parents = []
+    for clust in range(clusters):
+        parents.extend(strats[labels == clust][0:selnum])
+    print(f"select() time = {time.time() - start:.2f} sec    cluster distrib = {np.bincount(labels)}")
+    return parents
+
 def evolve(strategies):
     popsize = len(strategies)
+    # parents = select(strategies, 3, 4)
     parents = strategies[:popsize//5]
     newstrat = list(parents)
     while len(newstrat) < popsize:
@@ -160,7 +187,7 @@ def main_evol():
         for strategy in strategies[:3]:
             print(strategy)
         print("")
-        save_strategies(strategies[:10], "save_evol")
+        save_strategies(strategies, "save_evol")
         strategies = evolve(strategies)
 
 if __name__ == '__main__':
