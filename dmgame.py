@@ -257,11 +257,14 @@ def mp_run(strategies, players_per_game, games_per_strategy):
     return [(s.wins, s.fitness) for s in strategies]
 
 class MPTournament:
-    def __init__(self):
+    def __init__(self, use_mp=True):
+        self.use_mp = use_mp
         self.num_workers = os.cpu_count()
         self.pool_size = max(1, self.num_workers - 1)
         self.pool = multiprocessing.Pool(processes=self.pool_size)
     def run(self, strategies, players_per_game=3, games_per_strategy=100):
+        if not self.use_mp:
+            return run_tournament(strategies, players_per_game, games_per_strategy)
         # We run one share worth of work in the main program,
         # so that we have representative play-order data to print as training progresses,
         # without having to pickle and pass all that data back and forth.

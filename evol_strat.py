@@ -1,11 +1,19 @@
 from collections import Counter, defaultdict
+import colorsys
 import pickle
 import random
 import time
 
 from dmstrat import *
 
+import colored
+
 # random.seed(123456)
+
+def pct(num, text):
+    r, g, b = colorsys.hls_to_rgb(0.75 * 0.01 * (100-num), 0.4, 1)
+    hexcode = f"#{int(round(255*r)):02X}{int(round(255*g)):02X}{int(round(255*b)):02X}"
+    return colored.stylize(f"{num:.0f} {text}", colored.fg(hexcode))
 
 # These would be lambdas, but lambdas don't pickle
 def zero(): return 0
@@ -89,7 +97,7 @@ class LinearRankStrategy(Strategy):
         # Show every line for turns played
         lines = ['']
         for ii, buys in enumerate(sorted_used_buys):
-            line = '   '.join(f"{100*cbt[ii][m]/n:.0f} {m}" for m in buys if cbt[ii][m] > 0) + '   (%)'
+            line = '   '.join(f"{pct(100*cbt[ii][m]/n, m)}" for m in buys if cbt[ii][m] > 0) + '   (%)'
             if sum(cbt[ii].values()) > 0:
                 # avoid blank lines for sequences never played
                 lines.append(f'    {ii+1:2d}:   '+line)
@@ -191,29 +199,58 @@ def evolve(strategies):
 
 def main_evol():
     players = 2
-    popsize = 12 * 32 # some multiple of 2, 3, and 4
-    strategies = [LinearRankStrategy() for _ in range(popsize)]
+    # popsize = 12 * 32 # some multiple of 2, 3, and 4
+    # strategies = [LinearRankStrategy() for _ in range(popsize)]
+    popsize = 12 * 8 # some multiple of 2, 3, and 4
+    numpools = 4
+    strat_pools = [[LinearRankStrategy() for _ in range(popsize)] for _ in range(numpools)]
 
-    mp_tourn = MPTournament()
-    use_mp = True
+    mp_tourn = MPTournament(use_mp=True)
 
     CYCLES = 100
     GPS = 100
     for cycle in range(CYCLES): # expect to Ctrl-C to exit early
-        if cycle == CYCLES-1: # last one
-            GPS = 1000 # better ranking before final save
-            # use_mp = False
+        # if cycle == CYCLES-1: # last one
+        #     GPS = 1000 # better ranking before final save
+
         start = time.time()
-        if use_mp:
+        for strategies in strat_pools:
             mp_tourn.run(strategies, players, games_per_strategy=GPS)
-        else:
-            run_tournament(strategies, players, games_per_strategy=GPS)
+
         print(f"round {cycle}    {players} players    {GPS} games    {time.time() - start:.2f} sec " + ("="*70))
-        for strategy in strategies[:3]:
+        # for strategy in strategies[0:4]:
+        #     print(strategy)
+        for strategies in strat_pools:
+            print(strategies[0])
+        print("")
+        save_strategies(strat_pools, "save_evol")
+
+        if cycle == CYCLES-1: # last one
+            break
+        # strategies = evolve(strategies)
+        for ii, strategies in enumerate(strat_pools):
+            strat_pools[ii] = evolve(strategies)
+
+    # Collapse the top contenders from each pool into a single, final pool
+    # and run lots of games to get an accurate assessment of each.
+    strategies = []
+    for s in strat_pools:
+        strategies.extend(s[0:len(s)//numpools])
+
+    GPS = 1000
+    for cycle in range(3):
+        start = time.time()
+        mp_tourn.run(strategies, players, games_per_strategy=GPS)
+
+        print(f"round {cycle}    {players} players    {GPS} games    {time.time() - start:.2f} sec " + ("="*70))
+        for strategy in strategies[0:4]:
             print(strategy)
         print("")
         save_strategies(strategies, "save_evol")
-        strategies = evolve(strategies)
+
+        # No more evolution -- just weed out the weak ones and keep playing!
+        strategies = strategies[0:len(strategies)//2]
+        GPS *= 2
 
 if __name__ == '__main__':
     main_evol()
