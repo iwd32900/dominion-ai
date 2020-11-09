@@ -124,6 +124,21 @@ def mutate(w, weight_dist, rate):
         if random.random() < rate:
             w[ii] = weight_dist[ii]()
 
+def perturb(parent, lr):
+    """
+    Clone `parent` and interpolate its weights `lr` fraction of the way
+    towards the weights of a randomly-generated strategy.
+    Reasonable values for lr might be 0.01 - 0.1
+    """
+    randstrat = parent.__class__()
+    w1 = parent.weights
+    w2 = randstrat.weights
+    for ii in range(len(w2)):
+        w2[ii] = w1[ii] + lr*(w2[ii] - w1[ii])
+    # Must re-initialize a class to precompute sorted orders, etc
+    child = parent.__class__(w2)
+    return child
+
 def select(strategies, clusters, factor):
     """
     Encourage diversity in the selection step:
@@ -153,8 +168,18 @@ def select(strategies, clusters, factor):
 def evolve(strategies):
     popsize = len(strategies)
     # parents = select(strategies, 3, 4)
-    parents = strategies[:popsize//5]
+    parents = strategies[:popsize//6]
+    # Copy original parents (1/6)
     newstrat = list(parents)
+    # Randomly perturbed versions of parents (1/6)
+    for parent in parents:
+        newstrat.append(perturb(parent, 0.02))
+    # Fewer mutations but more radical (1/6)
+    for parent in parents:
+        w = list(parent.weights)
+        mutate(w, parent.weight_dist, 0.05)
+        newstrat.append(parent.__class__(w))
+    # Crossed-over and mutated versions of parents (3/6)
     while len(newstrat) < popsize:
         p1 = random.choice(parents)
         p2 = random.choice(parents)
