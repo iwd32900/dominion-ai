@@ -1,7 +1,12 @@
 from collections import Counter, defaultdict
+import colorsys
 import datetime
+import math
 import pickle
 import random
+
+import colored
+
 from dmgame import *
 
 # Use one consistent timestamp throughout the program execution
@@ -22,6 +27,14 @@ def load_strategies(filename):
         if isinstance(obj, list):
             return obj
         return obj['strategies']
+
+def pct(num, text):
+    # Convert percent (0 - 100) to fraction (1.0 - 0.0),
+    # with more spacing between low %'s than high ones.
+    adjnum = 0.1 * (10 - math.sqrt(num))
+    r, g, b = colorsys.hls_to_rgb(0.75 * adjnum, 0.4, 1)
+    hexcode = f"#{int(round(255*r)):02X}{int(round(255*g)):02X}{int(round(255*b)):02X}"
+    return colored.stylize(f"{num:.0f} {text}", colored.fg(hexcode))
 
 def sorted_by(target, keys, reverse=False):
     # Book specifies breaking ties at random -- maybe that's important?
@@ -116,7 +129,7 @@ class Strategy:
         lines = ['']
         for ii in range(len(cbt)):
             # sorted_buys = sorted(self.buys, key=lambda m: cbt[ii][m], reverse=True)
-            line = '   '.join(f"{cbt[ii][m]} {m}" for m in sorted_buys if cbt[ii][m] > 0)
+            line = '   '.join(f"{pct(cbt[ii][m], m)}" for m in sorted_buys if cbt[ii][m] > 0)
             if sum(cbt[ii].values()) > 0:
                 # avoid blank lines for sequences never played
                 lines.append(f'    {ii+1:2d}:   '+line)

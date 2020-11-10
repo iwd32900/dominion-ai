@@ -230,12 +230,13 @@ def print_stockpile(stockpile):
     for card, count in stockpile.items():
         print(f"  {count} {card}")
 
-def run_tournament(strategies, players_per_game=3, games_per_strategy=100, sort=True):
+def run_tournament(strategies, players_per_game=3, games_per_strategy=100, reset=True, sort=True):
     popsize = len(strategies)
     assert popsize % players_per_game == 0, "Popsize must be evenly divisible by number of players"
 
-    for strategy in strategies:
-        strategy.reset()
+    if reset:
+        for strategy in strategies:
+            strategy.reset()
 
     for _ in range(games_per_strategy):
         shuffle(strategies)

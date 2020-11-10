@@ -1,19 +1,11 @@
 from collections import Counter, defaultdict
-import colorsys
 import pickle
 import random
 import time
 
 from dmstrat import *
 
-import colored
-
 # random.seed(123456)
-
-def pct(num, text):
-    r, g, b = colorsys.hls_to_rgb(0.75 * 0.01 * (100-num), 0.4, 1)
-    hexcode = f"#{int(round(255*r)):02X}{int(round(255*g)):02X}{int(round(255*b)):02X}"
-    return colored.stylize(f"{num:.0f} {text}", colored.fg(hexcode))
 
 # These would be lambdas, but lambdas don't pickle
 def zero(): return 0
