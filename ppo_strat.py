@@ -54,7 +54,7 @@ class PPOStrategy(Strategy):
             self.buy_ac = ppo_clip.MLPActorCritic(obs_dim, n_acts, hidden_sizes)
         else:
             self.buy_ac = buy_ac
-        self.buy_buf = ppo_clip.PPOBuffer(obs_dim, n_acts, act_dim=None, size=1000 * 5 * MAX_TURNS)
+        self.buy_buf = ppo_clip.PPOBuffer(obs_dim, n_acts, act_dim=None, size=1000 * 5 * MAX_TURNS, gamma=1.0)
         # self.buy_optim = ppo_clip.PPOAlgo(self.buy_ac, pi_lr=1e-4)
         self.buy_optim = ppo_clip.PPOAlgo(self.buy_ac, pi_lr=1e-2, vf_lr=1e-2)
 

@@ -119,6 +119,7 @@ class Strategy:
         sorted_actions = sorted(self.actions, key=lambda m: self.act_counts[m], reverse=True)
         return '   '.join(f"{self.act_counts[m]/n:.1f} {m}" for m in sorted_actions if self.act_counts[m] > 0)
     def fmt_buys(self):
+        n = sum(self.game_lengths.values()) # number of games played
         # Refomat into more useful but probably slower form
         cbt = defaultdict(Counter)
         for (turn,card), count in self.buy_counts_by_turn.items():
@@ -129,13 +130,12 @@ class Strategy:
         lines = ['']
         for ii in range(len(cbt)):
             # sorted_buys = sorted(self.buys, key=lambda m: cbt[ii][m], reverse=True)
-            line = '   '.join(f"{pct(cbt[ii][m], m)}" for m in sorted_buys if cbt[ii][m] > 0)
+            line = '   '.join(f"{pct(100*cbt[ii][m]/n, m)}" for m in sorted_buys if cbt[ii][m] > 0)
             if sum(cbt[ii].values()) > 0:
                 # avoid blank lines for sequences never played
                 lines.append(f'    {ii+1:2d}:   '+line)
 
         sorted_buys = sorted(self.buys, key=lambda m: (getattr(m, 'cost', 0), self.buy_counts[m]), reverse=True)
-        n = sum(self.game_lengths.values()) # number of games played
         line = '   '.join(f"{self.buy_counts[m]/n:.1f} {m}" for m in sorted_buys if self.buy_counts[m] > 0)
         lines.append(f'    Buys   '+line)
         line = '   '.join(f"{self.deck_counts[m]/n:.1f} {m}" for m in sorted_buys if self.deck_counts[m] > 0)
